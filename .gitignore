@@ -1,0 +1,9 @@
+.env
+*.env
+skill/cases/sweep.log
+__pycache__/
+*.pyc
+
+# состояние прогонов, не исходники
+skill/cases/watermark.json
+skill/cases/journal.jsonl

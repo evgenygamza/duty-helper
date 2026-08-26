@@ -1,0 +1,111 @@
+# Манифест для ПЕСОЧНИЦЫ: прав с запасом, чтобы ничего не упиралось в scope.
+# Для рабочего воркспейса брать slack-app-manifest.yaml — там минимум с
+# обоснованием каждой строки.
+#
+# Если при вставке Slack ругнётся на конкретный scope — удалить эту строку,
+# набор менялся со временем и часть имён может быть недоступна в этом тарифе.
+
+display_information:
+  name: duty-helper
+  description: Помощник дежурного QA — песочница
+  background_color: "#1c2027"
+
+features:
+  bot_user:
+    display_name: duty-helper
+    always_online: false
+
+oauth_config:
+  scopes:
+    bot:
+      # каналы
+      - channels:read
+      - channels:history
+      - channels:join
+      - channels:manage
+      - channels:write.invites
+      - channels:write.topic
+      - groups:read
+      - groups:history
+      - groups:write
+      - groups:write.invites
+      - groups:write.topic
+      - im:read
+      - im:history
+      - im:write
+      - mpim:read
+      - mpim:history
+      - mpim:write
+      # сообщения
+      - chat:write
+      - chat:write.public
+      - chat:write.customize
+      - metadata.message:read
+      # реакции, пины, закладки
+      - reactions:read
+      - reactions:write
+      - pins:read
+      - pins:write
+      - bookmarks:read
+      - bookmarks:write
+      # файлы
+      - files:read
+      - files:write
+      # люди и группы
+      - users:read
+      - users:read.email
+      - users.profile:read
+      - usergroups:read
+      - usergroups:write
+      # списки и канвасы
+      - lists:read
+      - lists:write
+      - canvases:read
+      - canvases:write
+      # поиск приложением
+      - search:read.public
+      - search:read.private
+      # воркфлоу и команды
+      - commands
+      - triggers:read
+      - triggers:write
+      - workflow.steps:execute
+      # прочее
+      - team:read
+      - emoji:read
+      - links:read
+      - links:write
+    user:
+      # поиск по пространству — основной механизм сбора упоминаний
+      - search:read
+      - channels:read
+      - channels:history
+      - groups:read
+      - groups:history
+      - im:read
+      - im:history
+      - mpim:read
+      - mpim:history
+      - chat:write
+      - reactions:read
+      - reactions:write
+      - files:read
+      - users:read
+      - users:read.email
+      - lists:read
+      - lists:write
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+  event_subscriptions:
+    bot_events:
+      - message.channels
+      - message.groups
+      - message.im
+      - app_mention
+      - reaction_added
+      - reaction_removed
+      - file_shared
+      - channel_created
