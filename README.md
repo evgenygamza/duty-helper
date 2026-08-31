@@ -58,11 +58,8 @@ README.md              это ТЗ и архитектура
 ROADMAP.md             план, открытые вопросы, что проверено
 bot/                   Slack-проект: код, pyproject.toml, .slack/
   manifest.json        права и подписки приложения, читает Slack CLI
-  SLACK-APP.md         обоснование каждого scope для заявки админу
 skills/factset-duty/   скилл дежурного, симлинк из ~/.claude/skills
 temp/                  нужное только для разработки
-  SANDBOX.md           как завести developer sandbox
-  seed_sandbox.py      наполнить песочницу тестовыми обращениями
   sandbox_check.py     проверка возможностей приложения
 ```
 
