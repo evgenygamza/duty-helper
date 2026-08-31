@@ -1,10 +1,10 @@
 # Бот дежурного — план
 
 Про живого бота в Slack: Bolt, Socket Mode, постоянный процесс.
-Ветка на `claude -p` и `launchd` описана в `skill/ROADMAP.md`, она временная
+Ветка на `claude -p` и `launchd` описана в `skills/factset-duty/ROADMAP.md`, она временная
 затычка и живёт своей жизнью до Э6.
 
-Состояние на 26.08.2026.
+Состояние на 26.08.2026. ТЗ и архитектура — в `README.md`.
 
 ## Э0 — репо и приложение под контролем
 
@@ -19,7 +19,7 @@
 
 ## Э1 — каркас бота
 
-- [ ] `poetry`, `slack_bolt`, `SocketModeHandler`
+- [ ] `poetry`, `slack_bolt`, `SocketModeHandler` — всё внутри `bot/`
 - [ ] конфиг: три токена, id группы призывов, id канала очереди
 - [ ] обработчики `app_mention` и `reaction_added` пишут в лог
 
@@ -31,7 +31,7 @@
       after:<точка>`, раз в минуту
 - [ ] вотермарка и дедуп по `ts`, чтобы обращение не завелось дважды
 - [ ] чтение треда целиком через `conversations.replies` user-токеном
-- [ ] поправить запрос в `references/slack-triage.md` и `SKILL.md`: потерян `@`
+- [ ] поправить запрос в `skills/factset-duty/references/slack-triage.md` и `SKILL.md`: потерян `@`
 
 **Выход:** через минуту после призыва бот знает о нём и держит текст треда.
 
@@ -48,7 +48,7 @@
 ## Э4 — саммари пишет ИИ
 
 - [ ] выбрать чем: Claude API из бота, kagent в кубере или что-то третье
-- [ ] промпт взять из `skill/scripts/sweep-prompt.txt`, он обкатан
+- [ ] промпт взять из `skills/factset-duty/scripts/sweep-prompt.txt`, он обкатан
 - [ ] честная оценка: сколько раз саммари врёт на реальных тредах
 
 **Выход:** карточку видно без открытия треда.
@@ -83,9 +83,36 @@
 Пятое проверить рано: если призывы летят в приватные каналы мимо человека,
 схема с поиском теряет часть обращений.
 
-## Проверено 26.08 в песочнице
+## Проверено в песочнице
+
+Приложение `duty-helper`, бот `dutyhelper` (`U0BS4J84MMM`), канал `C0BSKTQ1M5G`,
+группа `@qa-factset-dutyman` = `S0BTF0KMJV6`.
+
+26.08:
 
 - оба токена живы, Socket Mode включён, app-токен отдаёт wss
 - поиск группы работает, если в запросе есть `@`: `@qa-factset-dutyman`
   находит настоящие теги `<!subteam^ID>`, без `@` — только текстовые вхождения
 - у бот-токена набор прав старый, приложение с новым манифестом не переустановлено
+- Slack CLI v4.6.0 поставлен, `slack login` не пройден
+
+25.08, прогон `temp/sandbox_check.py` — 11 из 15:
+
+- работают `chat.update`, `chat.delete`, `reactions.add/remove`,
+  `slackLists.create`, `items.create`, `items.list`, `items.info`,
+  `usergroups.list`, `chat.postMessage`
+- `slackLists.items.update` → `invalid_arguments`: у элемента `fields: []`,
+  надо добить схему ячеек
+- `assistant.search.context` → `invalid_action_token`: метод для ассистентов
+  Slack, не наш путь
+
+## Хвосты
+
+- дежурный **захардкожен** на Гамзу в
+  `skills/factset-duty/references/duty-channel.md`
+- доска ITSM 5660 **неполна**: ITSM-72571 на ней нет, хотя Team проставлен —
+  инциденты искать поиском по JQL
+- алерты Zabbix и дайджест отложены осознанно, см.
+  `skills/factset-duty/BACKLOG.md`
+- когда бот пишет меншен сам, ставить надо полную форму
+  `<!subteam^ID|@handle>` — короткую поиск не увидит
