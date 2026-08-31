@@ -18,7 +18,11 @@ MODEL = 'claude-opus-5'
 
 class Summarizer:
     def __init__(self) -> None:
+        # Credentials come from ANTHROPIC_API_KEY or an `ant auth login` profile.
+        # One cheap call up front, so a broken login fails at startup and not
+        # on the first duty call hours later.
         self.client = anthropic.Anthropic()
+        self.client.models.retrieve(MODEL)
 
     def of_thread(self, messages: list[dict]) -> str:
         response = self.client.messages.create(
