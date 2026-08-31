@@ -1,10 +1,5 @@
 .env
 *.env
-skills/factset-duty/cases/sweep.log
 __pycache__/
 *.pyc
-
-# состояние прогонов, не исходники
-skills/factset-duty/cases/watermark.json
-skills/factset-duty/cases/journal.jsonl
 .venv/
