@@ -13,9 +13,8 @@
 5. писать комментарии к элементу
 
 Правила дежурства, пороги и определение просадок живут в скилле
-`skills/factset-duty` — они существуют, чтобы боту было чем наполнять список.
-Смысл и логика: `skills/factset-duty/SKILL.md` и
-`skills/factset-duty/references/duty-channel.md`.
+`~/.claude/skills/factset-duty`, рядом с остальными скиллами. В этом
+репозитории их нет: бот ими пользуется, но не хранит.
 
 ## Архитектура
 
@@ -58,7 +57,6 @@ README.md              это ТЗ и архитектура
 ROADMAP.md             план, открытые вопросы, что проверено
 bot/                   Slack-проект: код, pyproject.toml, .slack/
   manifest.json        права и подписки приложения, читает Slack CLI
-skills/factset-duty/   скилл дежурного, симлинк из ~/.claude/skills
 temp/                  нужное только для разработки
   sandbox_check.py     проверка возможностей приложения
 ```
