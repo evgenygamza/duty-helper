@@ -1,0 +1,22 @@
+[project]
+name = "duty-helper-bot"
+version = "0.1.0"
+description = "Бот дежурного QA FactSet: Bolt, Socket Mode"
+requires-python = ">=3.13,<4.0"
+dependencies = [
+    "slack-bolt (>=1.21,<2.0)",
+    "slack-cli-hooks<1.0.0",
+]
+
+[tool.poetry]
+packages = [{ include = "duty_bot" }]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.format]
+quote-style = "single"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"

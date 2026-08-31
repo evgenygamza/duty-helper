@@ -7,3 +7,4 @@ __pycache__/
 # состояние прогонов, не исходники
 skills/factset-duty/cases/watermark.json
 skills/factset-duty/cases/journal.jsonl
+.venv/
