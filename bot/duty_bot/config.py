@@ -1,5 +1,5 @@
-"""Настройки бота. Всё из окружения: `slack run` подставляет токены сам,
-локальный запуск берёт их из ~/.config/duty-helper/sandbox.env."""
+"""Bot settings, all from the environment: `slack run` injects the Slack tokens,
+a local run reads them from ~/.config/duty-helper/sandbox.env."""
 
 import os
 from dataclasses import dataclass
@@ -37,12 +37,12 @@ class Config:
             anthropic_key=os.environ.get('ANTHROPIC_API_KEY', ''),
         )
         missing = [n for n, v in (
-            ('токен бота', cfg.bot_token),
-            ('app-токен', cfg.app_token),
+            ('SLACK_BOT_TOKEN', cfg.bot_token),
+            ('SLACK_APP_TOKEN', cfg.app_token),
             ('DUTY_GROUP_ID', cfg.duty_group),
             ('DUTY_FEED_CHANNEL', cfg.feed_channel),
             ('ANTHROPIC_API_KEY', cfg.anthropic_key),
         ) if not v]
         if missing:
-            raise SystemExit('не хватает: ' + ', '.join(missing))
+            raise SystemExit('missing: ' + ', '.join(missing))
         return cfg

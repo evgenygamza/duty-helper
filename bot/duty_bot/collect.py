@@ -1,7 +1,7 @@
-"""Сбор призывов из каналов, где бот состоит, и отправка выжимки в ленту.
+"""Collect duty calls from channels the bot is in and post a summary to the feed.
 
-Слышим только каналы, куда бот вступил: событий из остальных Slack не шлёт.
-Поиск по всему пространству — отдельный этап.
+Slack only delivers events from channels the bot has joined. Searching the rest
+of the workspace is a separate stage.
 """
 
 import logging
@@ -30,6 +30,6 @@ def build(cfg: Config) -> App:
             text=f'{summary}\n\nТред в <#{channel}>: {link}',
             unfurl_links=False,
         )
-        log.info('выжимка отправлена, тред %s/%s из %d сообщений', channel, ts, len(thread))
+        log.info('summary posted for thread %s/%s of %d messages', channel, ts, len(thread))
 
     return app

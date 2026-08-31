@@ -1,4 +1,4 @@
-"""Точка входа: `slack run` ищет app.py в корне проекта."""
+"""Entry point: `slack run` looks for app.py at the project root."""
 
 import logging
 
@@ -12,7 +12,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     cfg = Config.from_env()
     logging.getLogger('duty').info(
-        'лента %s, слушаем группу %s', cfg.feed_channel, cfg.duty_group
+        'feed %s, listening for group %s', cfg.feed_channel, cfg.duty_group
     )
     SocketModeHandler(build(cfg), cfg.app_token).start()
 

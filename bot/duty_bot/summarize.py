@@ -1,8 +1,8 @@
-"""Выжимка треда через Claude API.
+"""Thread summary via the Claude API.
 
-Промпт лежит рядом в prompts/summary.md: тот же текст можно открыть глазами,
-а бот кладёт его в системное сообщение. Системная часть от вызова к вызову
-не меняется, поэтому кэшируется и оплачивается один раз.
+The prompt lives next to this module in prompts/summary.md: the same text is
+readable by a human and goes into the system message. The system part never
+changes between calls, so it is cached and paid for once.
 """
 
 import logging
@@ -36,9 +36,9 @@ class Summarizer:
 
 
 def render(messages: list[dict]) -> str:
-    """Тред в плоский текст: кто и что написал, по порядку."""
+    """Flatten a thread into plain text: who wrote what, in order."""
     lines = []
     for m in messages:
-        who = m.get('user') or m.get('username') or 'неизвестно'
+        who = m.get('user') or m.get('username') or 'unknown'
         lines.append(f'<@{who}>: {m.get("text", "")}')
     return '\n\n'.join(lines)
