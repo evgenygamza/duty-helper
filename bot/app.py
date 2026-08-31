@@ -12,7 +12,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     cfg = Config.from_env()
     logging.getLogger('duty').info(
-        'очередь %s, слушаем группу %s', cfg.queue_channel, cfg.duty_group
+        'лента %s, слушаем группу %s', cfg.feed_channel, cfg.duty_group
     )
     SocketModeHandler(build(cfg), cfg.app_token).start()
 

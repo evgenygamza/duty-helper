@@ -22,7 +22,7 @@ class Config:
     bot_token: str
     app_token: str
     duty_group: str
-    queue_channel: str
+    feed_channel: str
     source_channels: tuple[str, ...]
 
     @classmethod
@@ -31,14 +31,14 @@ class Config:
             bot_token=_first('SLACK_BOT_TOKEN', 'SLACK_SANDBOX_TOKEN'),
             app_token=_first('SLACK_APP_TOKEN', 'SLACK_SANDBOX_APP_TOKEN'),
             duty_group=os.environ.get('DUTY_GROUP_ID', ''),
-            queue_channel=os.environ.get('DUTY_QUEUE_CHANNEL', ''),
+            feed_channel=os.environ.get('DUTY_FEED_CHANNEL', ''),
             source_channels=_ids('DUTY_SOURCE_CHANNELS'),
         )
         missing = [n for n, v in (
             ('токен бота', cfg.bot_token),
             ('app-токен', cfg.app_token),
             ('DUTY_GROUP_ID', cfg.duty_group),
-            ('DUTY_QUEUE_CHANNEL', cfg.queue_channel),
+            ('DUTY_FEED_CHANNEL', cfg.feed_channel),
         ) if not v]
         if missing:
             raise SystemExit('не хватает: ' + ', '.join(missing))

@@ -80,7 +80,8 @@
         "users:read",
         "users:read.email",
         "lists:read",
-        "lists:write"
+        "lists:write",
+        "channels:write"
       ]
     }
   },

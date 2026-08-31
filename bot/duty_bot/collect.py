@@ -22,7 +22,7 @@ def build(cfg: Config) -> App:
         channel, ts = message['channel'], message['ts']
         link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
         client.chat_postMessage(
-            channel=cfg.queue_channel,
+            channel=cfg.feed_channel,
             text=f'Призыв в <#{channel}> от <@{message.get("user")}>\n{link}',
             unfurl_links=False,
         )
