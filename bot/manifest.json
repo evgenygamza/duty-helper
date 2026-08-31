@@ -1,0 +1,103 @@
+{
+  "display_information": {
+    "name": "duty-helper",
+    "description": "Помощник дежурного QA — песочница",
+    "background_color": "#1c2027"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "duty-helper",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:read",
+        "channels:history",
+        "channels:join",
+        "channels:manage",
+        "channels:write.invites",
+        "channels:write.topic",
+        "groups:read",
+        "groups:history",
+        "groups:write",
+        "groups:write.invites",
+        "groups:write.topic",
+        "im:read",
+        "im:history",
+        "im:write",
+        "mpim:read",
+        "mpim:history",
+        "mpim:write",
+        "chat:write",
+        "chat:write.public",
+        "chat:write.customize",
+        "metadata.message:read",
+        "reactions:read",
+        "reactions:write",
+        "pins:read",
+        "pins:write",
+        "bookmarks:read",
+        "bookmarks:write",
+        "files:read",
+        "files:write",
+        "users:read",
+        "users:read.email",
+        "users.profile:read",
+        "usergroups:read",
+        "usergroups:write",
+        "lists:read",
+        "lists:write",
+        "canvases:read",
+        "canvases:write",
+        "search:read.public",
+        "search:read.private",
+        "commands",
+        "triggers:read",
+        "triggers:write",
+        "workflow.steps:execute",
+        "team:read",
+        "emoji:read",
+        "links:read",
+        "links:write"
+      ],
+      "user": [
+        "search:read",
+        "channels:read",
+        "channels:history",
+        "groups:read",
+        "groups:history",
+        "im:read",
+        "im:history",
+        "mpim:read",
+        "mpim:history",
+        "chat:write",
+        "reactions:read",
+        "reactions:write",
+        "files:read",
+        "users:read",
+        "users:read.email",
+        "lists:read",
+        "lists:write"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false,
+    "event_subscriptions": {
+      "bot_events": [
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "app_mention",
+        "reaction_added",
+        "reaction_removed",
+        "file_shared",
+        "channel_created"
+      ]
+    }
+  }
+}

@@ -56,10 +56,9 @@ User-токен действует от имени установившего п
 ```
 README.md              это ТЗ и архитектура
 ROADMAP.md             план, открытые вопросы, что проверено
-bot/                   код бота на Bolt, pyproject.toml, .slack/, манифесты
+bot/                   Slack-проект: код, pyproject.toml, .slack/
+  manifest.json        права и подписки приложения, читает Slack CLI
   SLACK-APP.md         обоснование каждого scope для заявки админу
-  manifest-prod.yaml   минимум прав для рабочего воркспейса
-  manifest-sandbox.yaml  с запасом, для песочницы
 skills/factset-duty/   скилл дежурного, симлинк из ~/.claude/skills
 temp/                  нужное только для разработки
   SANDBOX.md           как завести developer sandbox
