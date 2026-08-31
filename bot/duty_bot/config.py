@@ -1,0 +1,45 @@
+"""Настройки бота. Всё из окружения: `slack run` подставляет токены сам,
+локальный запуск берёт их из ~/.config/duty-helper/sandbox.env."""
+
+import os
+from dataclasses import dataclass
+
+
+def _first(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return ''
+
+
+def _ids(name: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in os.environ.get(name, '').split(',') if part.strip())
+
+
+@dataclass(frozen=True)
+class Config:
+    bot_token: str
+    app_token: str
+    duty_group: str
+    queue_channel: str
+    source_channels: tuple[str, ...]
+
+    @classmethod
+    def from_env(cls) -> 'Config':
+        cfg = cls(
+            bot_token=_first('SLACK_BOT_TOKEN', 'SLACK_SANDBOX_TOKEN'),
+            app_token=_first('SLACK_APP_TOKEN', 'SLACK_SANDBOX_APP_TOKEN'),
+            duty_group=os.environ.get('DUTY_GROUP_ID', ''),
+            queue_channel=os.environ.get('DUTY_QUEUE_CHANNEL', ''),
+            source_channels=_ids('DUTY_SOURCE_CHANNELS'),
+        )
+        missing = [n for n, v in (
+            ('токен бота', cfg.bot_token),
+            ('app-токен', cfg.app_token),
+            ('DUTY_GROUP_ID', cfg.duty_group),
+            ('DUTY_QUEUE_CHANNEL', cfg.queue_channel),
+        ) if not v]
+        if missing:
+            raise SystemExit('не хватает: ' + ', '.join(missing))
+        return cfg
