@@ -24,6 +24,7 @@ class Config:
     duty_group: str
     feed_channel: str
     source_channels: tuple[str, ...]
+    anthropic_key: str
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -33,12 +34,14 @@ class Config:
             duty_group=os.environ.get('DUTY_GROUP_ID', ''),
             feed_channel=os.environ.get('DUTY_FEED_CHANNEL', ''),
             source_channels=_ids('DUTY_SOURCE_CHANNELS'),
+            anthropic_key=os.environ.get('ANTHROPIC_API_KEY', ''),
         )
         missing = [n for n, v in (
             ('токен бота', cfg.bot_token),
             ('app-токен', cfg.app_token),
             ('DUTY_GROUP_ID', cfg.duty_group),
             ('DUTY_FEED_CHANNEL', cfg.feed_channel),
+            ('ANTHROPIC_API_KEY', cfg.anthropic_key),
         ) if not v]
         if missing:
             raise SystemExit('не хватает: ' + ', '.join(missing))
