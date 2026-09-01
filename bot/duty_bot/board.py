@@ -10,13 +10,15 @@ import logging
 log = logging.getLogger('duty')
 
 COLUMNS = {
-    'call': 'Col0BU5HH4S65',
-    'status': 'Col0BTN9BFZJT',
-    'asked_by': 'Col0BTXCWBSG3',
-    'channel': 'Col0BUY1LN6LQ',
-    'thread': 'Col0BTZFD1N6R',
-    'data': 'Col0BU3K6BBHQ',
-    'incident': 'Col0BU1MXQRV4',
+    'call': 'Col0BU7MVT94L',
+    'status': 'Col0BTNLS1CFR',
+    'problem': 'Col0BTZSS20JH',
+    'research': 'Col0BTXQAUWRZ',
+    'data': 'Col0BU5UXN001',
+    'asked_by': 'Col0BUYD16NQY',
+    'channel': 'Col0BU416MVT4',
+    'thread': 'Col0BU23Y5URL',
+    'incident': 'Col0BU7MW4M36',
 }
 
 
@@ -61,10 +63,9 @@ def update_summary(client, list_id: str, item_id: str, summary: dict) -> None:
     client.api_call('slackLists.items.update', params={
         'list_id': list_id,
         'cells': json.dumps([
-            {'row_id': item_id, 'column_id': COLUMNS['call'],
-             'rich_text': _rich_text(summary.get('call', ''))},
-            {'row_id': item_id, 'column_id': COLUMNS['data'],
-             'rich_text': _rich_text(summary.get('data', '-'))},
+            {'row_id': item_id, 'column_id': COLUMNS[key],
+             'rich_text': _rich_text(summary.get(key, '-'))}
+            for key in ('call', 'problem', 'data')
         ]),
     })
 
@@ -72,6 +73,7 @@ def update_summary(client, list_id: str, item_id: str, summary: dict) -> None:
 def add_item(client, list_id: str, summary: dict, channel: str, user: str, link: str) -> str:
     fields = [
         {'column_id': COLUMNS['call'], 'rich_text': _rich_text(summary.get('call', ''))},
+        {'column_id': COLUMNS['problem'], 'rich_text': _rich_text(summary.get('problem', '-'))},
         {'column_id': COLUMNS['data'], 'rich_text': _rich_text(summary.get('data', '-'))},
         {'column_id': COLUMNS['status'], 'select': ['new']},
         {'column_id': COLUMNS['channel'], 'channel': [channel]},
