@@ -19,6 +19,7 @@ class Config:
     app_token: str
     duty_group: str
     feed_channel: str
+    list_id: str
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -27,12 +28,14 @@ class Config:
             app_token=_first('SLACK_APP_TOKEN', 'SLACK_SANDBOX_APP_TOKEN'),
             duty_group=os.environ.get('DUTY_GROUP_ID', ''),
             feed_channel=os.environ.get('DUTY_FEED_CHANNEL', ''),
+            list_id=os.environ.get('DUTY_LIST_ID', ''),
         )
         missing = [n for n, v in (
             ('SLACK_BOT_TOKEN', cfg.bot_token),
             ('SLACK_APP_TOKEN', cfg.app_token),
             ('DUTY_GROUP_ID', cfg.duty_group),
             ('DUTY_FEED_CHANNEL', cfg.feed_channel),
+            ('DUTY_LIST_ID', cfg.list_id),
         ) if not v]
         if missing:
             raise SystemExit('missing: ' + ', '.join(missing))
