@@ -47,7 +47,19 @@ class Summarizer:
             input=text,
             generation_config={'thinking_level': 'low'},
         )
+        _log_usage(interaction)
         return _parse(interaction.output_text)
+
+
+def _log_usage(interaction) -> None:
+    """Thought tokens are billed too and are easy to miss, so they are logged
+    apart from the answer."""
+    u = getattr(interaction, 'usage', None)
+    if u is None:
+        return
+    log.info('tokens: вход %s, размышление %s, ответ %s, всего %s',
+             u.total_input_tokens, u.total_thought_tokens,
+             u.total_output_tokens, u.total_tokens)
 
 
 def _parse(raw: str) -> dict:
