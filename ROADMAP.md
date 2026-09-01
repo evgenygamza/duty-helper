@@ -116,6 +116,10 @@ is too low`. Пока работаем на бесплатном тире Gemini
   отсюда `invalid_arguments` 25.08. `key` работает только на чтение
 - `slackLists.info` не существует; схему списка отдаёт `files.info`,
   id списка это id файла
+- список, созданный ботом, никому не виден: `channels: []`. Публикация
+  ссылки в канал даёт доступ только на чтение. Права раздаёт
+  `slackLists.access.set` — `access_level` `read`/`write`/`owner`,
+  и либо `channel_ids`, либо `user_ids`, вместе нельзя
 - у Gemini таймаут ставится на клиенте (`http_options`), не в вызове;
   `gemini-3.7-flash` на бесплатном тире перегружен, `3.6-flash` отвечает
 - `assistant.search.context` → `invalid_action_token`: метод для ассистентов
