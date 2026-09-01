@@ -50,7 +50,9 @@ def handle(client, cfg: Config, summarizer: Summarizer, channel: str, ts: str, u
     # The thread is already on the board. Either it grew and the card needs a
     # fresher summary, or a second, different problem showed up in it.
     answer = summarizer.of_repeat(thread, card_text(known['fields']))
-    if answer['action'] == 'subtask':
+    if answer['action'] == 'keep':
+        log.info('card %s looks hand-written, left alone', known['id'])
+    elif answer['action'] == 'subtask':
         child = add_subtask(client, cfg.list_id, known['id'], answer)
         log.info('subtask %s added under %s from thread %s/%s', child, known['id'], channel, ts)
     else:

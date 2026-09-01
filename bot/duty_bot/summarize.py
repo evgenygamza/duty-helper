@@ -36,7 +36,7 @@ class Summarizer:
         """Same thread, called again: refresh the card or split off a subtask."""
         answer = self._ask(REPEAT_PROMPT,
                            f'Карточка сейчас:\n{card}\n\nТред целиком:\n{render(messages)}')
-        if answer.get('action') not in ('refresh', 'subtask'):
+        if answer.get('action') not in ('refresh', 'subtask', 'keep'):
             answer['action'] = 'refresh'
         return answer
 

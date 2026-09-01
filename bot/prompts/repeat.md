@@ -7,7 +7,7 @@ things happened.
 Answer with a single JSON object and nothing else:
 
 ```
-{"action": "refresh" | "subtask", "call": "...", "problem": "...", "data": "..."}
+{"action": "refresh" | "subtask" | "keep", "call": "...", "problem": "...", "data": "..."}
 ```
 
 - `refresh` — the thread is still about the same problem. It grew, gained
@@ -16,12 +16,22 @@ Answer with a single JSON object and nothing else:
 - `subtask` — the thread now carries a *second, different* problem alongside
   the first: another symbol group, another service, another kind of breakage.
   A child card is created for it, and the parent stays as it is.
+- `keep` — the card was clearly rewritten by a person: it carries wording,
+  conclusions or instructions that do not come from the thread. Leave it
+  alone. Slack does not record who edited a cell, so this judgement is
+  the only protection a hand-written card has.
 
-The three text fields describe the refreshed card for `refresh`, and the new
-child card for `subtask`.
+The three text fields describe the refreshed card for `refresh` and the new
+child card for `subtask`. For `keep` they are ignored.
 
 Rules, in order of importance:
 
+- **Never drop what a person added.** Slack does not record who edited a cell,
+  so anything in the current card that the thread does not contain was put
+  there by a human: a conclusion, a decision, an instruction. Carry it over
+  word for word and add to it. Losing it is the worst outcome here
+
+- a card that merely reads like your own earlier summary is **not** hand-written
 - **When in doubt, choose `refresh`.** A wrong split scatters one case across
   two cards and is worse than a card that is merely too broad
 - more detail about the same breakage is never a subtask

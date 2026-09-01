@@ -4,10 +4,14 @@ Cells are addressed by column_id, not by the schema key — the key only works
 when reading. Ids come from files.info on the list.
 """
 
+import datetime as dt
 import json
 import logging
 
 log = logging.getLogger('duty')
+
+# Comes from todo_mode, so it has a fixed id rather than a generated one.
+DUE_DATE = 'Col02'
 
 COLUMNS = {
     'call': 'Col0BU7MVT94L',
@@ -107,6 +111,9 @@ def add_item(client, list_id: str, summary: dict, channel: str, user: str, link:
         {'column_id': COLUMNS['problem'], 'rich_text': _rich_text(summary.get('problem', '-'))},
         {'column_id': COLUMNS['data'], 'rich_text': _rich_text(summary.get('data', '-'))},
         {'column_id': COLUMNS['status'], 'select': ['new']},
+        # A new call is expected to be picked up the same day. Slack renders
+        # an overdue date itself; finer thresholds belong to the reminders.
+        {'column_id': DUE_DATE, 'date': [dt.date.today().isoformat()]},
         {'column_id': COLUMNS['channel'], 'channel': [channel]},
         {'column_id': COLUMNS['thread'], 'link': [{'original_url': link, 'display_name': 'тред'}]},
     ]
