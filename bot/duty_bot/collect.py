@@ -12,7 +12,7 @@ import re
 
 from slack_bolt import App
 
-from .board import add_item, find_open_by_thread
+from .board import add_item, find_open_by_thread, update_summary
 from .config import Config
 from .summarize import Summarizer
 
@@ -38,12 +38,18 @@ def build(cfg: Config) -> App:
 
 def handle(client, cfg: Config, summarizer: Summarizer, channel: str, ts: str, user: str) -> None:
     link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
-    known = find_open_by_thread(client, cfg.list_id, link)
-    if known:
-        log.info('thread %s/%s already on the board as %s, skipping', channel, ts, known)
-        return
     thread = client.conversations_replies(channel=channel, ts=ts, limit=200)['messages']
     summary = summarizer.of_thread(thread)
+
+    # A repeat call in a live thread does not open a second card. The thread has
+    # grown since, so the card gets a fresher summary instead.
+    known = find_open_by_thread(client, cfg.list_id, link)
+    if known:
+        update_summary(client, cfg.list_id, known, summary)
+        log.info('card %s refreshed from thread %s/%s of %d messages',
+                 known, channel, ts, len(thread))
+        return
+
     item = add_item(client, cfg.list_id, summary, channel, user, link)
     log.info('item %s created from thread %s/%s of %d messages', item, channel, ts, len(thread))
 

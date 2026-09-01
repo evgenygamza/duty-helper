@@ -55,6 +55,20 @@ def _rich_text(text: str) -> list[dict]:
     }]
 
 
+def update_summary(client, list_id: str, item_id: str, summary: dict) -> None:
+    """Refresh what the card says about the call. Cells are addressed by
+    row_id + column_id; the schema key is read-only."""
+    client.api_call('slackLists.items.update', params={
+        'list_id': list_id,
+        'cells': json.dumps([
+            {'row_id': item_id, 'column_id': COLUMNS['call'],
+             'rich_text': _rich_text(summary.get('call', ''))},
+            {'row_id': item_id, 'column_id': COLUMNS['data'],
+             'rich_text': _rich_text(summary.get('data', '-'))},
+        ]),
+    })
+
+
 def add_item(client, list_id: str, summary: dict, channel: str, user: str, link: str) -> str:
     fields = [
         {'column_id': COLUMNS['call'], 'rich_text': _rich_text(summary.get('call', ''))},
