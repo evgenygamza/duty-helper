@@ -12,7 +12,7 @@ import re
 
 from slack_bolt import App
 
-from .board import add_item, find_open_by_thread, update_summary
+from .board import add_item, add_subtask, card_text, find_open_by_thread, update_summary
 from .config import Config
 from .summarize import Summarizer
 
@@ -39,19 +39,24 @@ def build(cfg: Config) -> App:
 def handle(client, cfg: Config, summarizer: Summarizer, channel: str, ts: str, user: str) -> None:
     link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
     thread = client.conversations_replies(channel=channel, ts=ts, limit=200)['messages']
-    summary = summarizer.of_thread(thread)
-
-    # A repeat call in a live thread does not open a second card. The thread has
-    # grown since, so the card gets a fresher summary instead.
     known = find_open_by_thread(client, cfg.list_id, link)
-    if known:
-        update_summary(client, cfg.list_id, known, summary)
-        log.info('card %s refreshed from thread %s/%s of %d messages',
-                 known, channel, ts, len(thread))
+
+    if known is None:
+        summary = summarizer.of_thread(thread)
+        item = add_item(client, cfg.list_id, summary, channel, user, link)
+        log.info('item %s created from thread %s/%s of %d messages', item, channel, ts, len(thread))
         return
 
-    item = add_item(client, cfg.list_id, summary, channel, user, link)
-    log.info('item %s created from thread %s/%s of %d messages', item, channel, ts, len(thread))
+    # The thread is already on the board. Either it grew and the card needs a
+    # fresher summary, or a second, different problem showed up in it.
+    answer = summarizer.of_repeat(thread, card_text(known['fields']))
+    if answer['action'] == 'subtask':
+        child = add_subtask(client, cfg.list_id, known['id'], answer)
+        log.info('subtask %s added under %s from thread %s/%s', child, known['id'], channel, ts)
+    else:
+        update_summary(client, cfg.list_id, known['id'], answer)
+        log.info('card %s refreshed from thread %s/%s of %d messages',
+                 known['id'], channel, ts, len(thread))
 
 
 def report_failure(client, cfg: Config, channel: str, ts: str) -> None:

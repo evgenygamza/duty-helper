@@ -17,7 +17,9 @@ from google import genai
 
 log = logging.getLogger('duty')
 
-PROMPT = (Path(__file__).parent.parent / 'prompts' / 'summary.md').read_text(encoding='utf-8')
+_PROMPTS = Path(__file__).parent.parent / 'prompts'
+PROMPT = (_PROMPTS / 'summary.md').read_text(encoding='utf-8')
+REPEAT_PROMPT = (_PROMPTS / 'repeat.md').read_text(encoding='utf-8')
 # 3.7-flash is congested on the free tier and times out; 3.6 answers.
 MODEL = 'gemini-3.6-flash'
 
@@ -28,10 +30,21 @@ class Summarizer:
         self.client = genai.Client(http_options={'timeout': 60000})
 
     def of_thread(self, messages: list[dict]) -> dict:
+        return self._ask(PROMPT, render(messages))
+
+    def of_repeat(self, messages: list[dict], card: str) -> dict:
+        """Same thread, called again: refresh the card or split off a subtask."""
+        answer = self._ask(REPEAT_PROMPT,
+                           f'Карточка сейчас:\n{card}\n\nТред целиком:\n{render(messages)}')
+        if answer.get('action') not in ('refresh', 'subtask'):
+            answer['action'] = 'refresh'
+        return answer
+
+    def _ask(self, instruction: str, text: str) -> dict:
         interaction = self.client.interactions.create(
             model=MODEL,
-            system_instruction=PROMPT,
-            input=render(messages),
+            system_instruction=instruction,
+            input=text,
             generation_config={'thinking_level': 'low'},
         )
         return _parse(interaction.output_text)
