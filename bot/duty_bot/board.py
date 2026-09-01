@@ -10,12 +10,13 @@ import logging
 log = logging.getLogger('duty')
 
 COLUMNS = {
-    'call': 'Col0BU12RDRBQ',
-    'status': 'Col0BU4TR3QAD',
-    'asked_by': 'Col0BTYRLR51T',
-    'channel': 'Col0BU6LPAM3N',
-    'thread': 'Col0BU3003AH0',
-    'data': 'Col0BTMKKHYR5',
+    'call': 'Col0BU5HH4S65',
+    'status': 'Col0BTN9BFZJT',
+    'asked_by': 'Col0BTXCWBSG3',
+    'channel': 'Col0BUY1LN6LQ',
+    'thread': 'Col0BTZFD1N6R',
+    'data': 'Col0BU3K6BBHQ',
+    'incident': 'Col0BU1MXQRV4',
 }
 
 
