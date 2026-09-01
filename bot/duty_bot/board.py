@@ -20,6 +20,31 @@ COLUMNS = {
 }
 
 
+# A card stays attached to its thread while it is open. A repeat mention in a
+# live thread must not spawn a second card; once the card is closed, the same
+# thread may legitimately start a new one.
+OPEN_STATUSES = ('new', 'in_progress', 'waiting_author', 'waiting_factset')
+
+
+def _same_thread(a: str, b: str) -> bool:
+    """A permalink grows a ?thread_ts=&cid= tail once the message has replies,
+    so the query string cannot be part of the comparison."""
+    return a.split('?')[0] == b.split('?')[0]
+
+
+def find_open_by_thread(client, list_id: str, url: str) -> str | None:
+    resp = client.api_call('slackLists.items.list',
+                           params={'list_id': list_id, 'limit': 100})
+    for item in resp.get('items', []):
+        fields = {f['key']: f for f in item.get('fields', [])}
+        if fields.get('status', {}).get('value') not in OPEN_STATUSES:
+            continue
+        for link in fields.get('thread', {}).get('link') or []:
+            if _same_thread(link.get('originalUrl', ''), url):
+                return item['id']
+    return None
+
+
 def _rich_text(text: str) -> list[dict]:
     return [{
         'type': 'rich_text',

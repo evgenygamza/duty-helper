@@ -1,8 +1,10 @@
-"""Collect duty calls from channels the bot is in: a board item plus a note
-in the feed.
+"""Collect duty calls from channels the bot is in and put them on the board.
 
 Slack only delivers events from channels the bot has joined. Searching the rest
 of the workspace is a separate stage.
+
+The feed channel is for failures only: a duty call already pings people through
+the group mention in the original thread, so announcing it again is noise.
 """
 
 import logging
@@ -10,7 +12,7 @@ import re
 
 from slack_bolt import App
 
-from .board import add_item
+from .board import add_item, find_open_by_thread
 from .config import Config
 from .summarize import Summarizer
 
@@ -23,17 +25,40 @@ def build(cfg: Config) -> App:
 
     @app.message(re.compile(re.escape(f'<!subteam^{cfg.duty_group}')))
     def on_call(message, client):
-        channel, ts = message['channel'], message.get('thread_ts', message['ts'])
-        thread = client.conversations_replies(channel=channel, ts=ts, limit=200)['messages']
-        summary = summarizer.of_thread(thread)
-        link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
-        item = add_item(client, cfg.list_id, summary, channel, message.get('user'), link)
-        client.chat_postMessage(
-            channel=cfg.feed_channel,
-            text=f'{summary.get("call", "")}\n\nТред в <#{channel}>: {link}',
-            unfurl_links=False,
-        )
-        log.info('item %s created from thread %s/%s of %d messages',
-                 item, channel, ts, len(thread))
+        channel = message['channel']
+        ts = message.get('thread_ts', message['ts'])
+        try:
+            handle(client, cfg, summarizer, channel, ts, message.get('user'))
+        except Exception:
+            log.exception('failed to handle call %s/%s', channel, ts)
+            report_failure(client, cfg, channel, ts)
 
     return app
+
+
+def handle(client, cfg: Config, summarizer: Summarizer, channel: str, ts: str, user: str) -> None:
+    link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
+    known = find_open_by_thread(client, cfg.list_id, link)
+    if known:
+        log.info('thread %s/%s already on the board as %s, skipping', channel, ts, known)
+        return
+    thread = client.conversations_replies(channel=channel, ts=ts, limit=200)['messages']
+    summary = summarizer.of_thread(thread)
+    item = add_item(client, cfg.list_id, summary, channel, user, link)
+    log.info('item %s created from thread %s/%s of %d messages', item, channel, ts, len(thread))
+
+
+def report_failure(client, cfg: Config, channel: str, ts: str) -> None:
+    """A call we could not process must not disappear quietly."""
+    try:
+        link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
+    except Exception:
+        link = f'канал <#{channel}>, сообщение {ts}'
+    try:
+        client.chat_postMessage(
+            channel=cfg.feed_channel,
+            text=f'Не смог завести карточку по призыву, разберите руками: {link}',
+            unfurl_links=False,
+        )
+    except Exception:
+        log.exception('could not even report the failure')
