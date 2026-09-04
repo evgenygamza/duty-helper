@@ -9,8 +9,8 @@ The trigger must fire on *any* change of the status field. Narrowed to one value
 it only ever calls in, and a mark then never comes off.
 """
 
-import hashlib
 import logging
+import random
 
 from .links import parse
 
@@ -18,8 +18,8 @@ log = logging.getLogger('duty')
 
 # What the author should see for a status, keyed by both the stored value and
 # the label — a workflow passes the label, a direct call may pass the value.
-# Several marks for one status means the thread gets one of them, picked from
-# the message timestamp: varied between calls, the same for one thread forever.
+# Several marks for one status means the thread gets any one of them: the choice
+# is random once and then stays, because the message itself remembers it.
 STATUS_MARKS = {
     'in_progress': ('eyes', 'eye', 'eyeglasses', 'mag', 'mag_right',
                     'sleuth_or_spy', 'face_with_monocle', 'goggles'),
@@ -43,16 +43,9 @@ STATUS_MARKS.update({
 MANAGED = {mark for marks in STATUS_MARKS.values() for mark in marks}
 
 
-def mark_for(status: str, ts: str) -> str | None:
-    """Same mark for one message forever, spread evenly across messages.
-
-    Hashed rather than taken modulo the timestamp: Slack stamps always end in 9,
-    so a plain remainder is always odd and half the variants are unreachable."""
-    marks = STATUS_MARKS.get(status)
-    if not marks:
-        return None
-    digest = hashlib.sha1(ts.encode()).hexdigest()
-    return marks[int(digest, 16) % len(marks)]
+def allowed(status: str) -> tuple[str, ...]:
+    """Any of these means the thread already says what the status says."""
+    return STATUS_MARKS.get(status) or ()
 
 
 def ours(client, channel: str, ts: str) -> set[str]:
@@ -75,13 +68,22 @@ def theirs(message: dict, me: str) -> set[str]:
 
 
 def apply(client, channel: str, ts: str, status: str, have: set[str]) -> dict[str, str]:
-    """Bring the message to exactly the mark the status calls for."""
-    wanted = mark_for(status, ts)
+    """Bring the message to a mark the status calls for.
+
+    A status with several marks is satisfied by any one of them, so the choice
+    is made once — at random, when there is nothing yet — and then read back off
+    the message itself. Picking afresh every time would leave the sweep swapping
+    the mark on every pass, since it compares what should be there with what is.
+    """
+    fits = allowed(status)
+    keep = have & set(fits)
     changed = {}
-    if wanted and wanted not in have:
-        client.reactions_add(channel=channel, timestamp=ts, name=wanted)
-        changed[wanted] = 'поставил'
-    for stale in have - {wanted}:
+    if fits and not keep:
+        fresh = random.choice(fits)
+        client.reactions_add(channel=channel, timestamp=ts, name=fresh)
+        changed[fresh] = 'поставил'
+        keep = {fresh}
+    for stale in have - keep:
         client.reactions_remove(channel=channel, timestamp=ts, name=stale)
         changed[stale] = 'снял'
     return changed

@@ -31,6 +31,11 @@ REFRESH_BUDGET = 3
 # Reminders own the real thresholds; the sweep only counts what is sitting.
 STALE_AFTER = 24 * 3600
 
+# A refresh that failed left «Прочитано» where it was, so the next pass would
+# pick the same card again. At a short interval that burns the model's daily
+# quota in minutes, so a card that broke is left alone for a while.
+COOLDOWN = 600
+
 
 class Sweep:
     def __init__(self, cfg, client, board, summarizer, channels: list[str]):
@@ -41,6 +46,7 @@ class Sweep:
         self.channels = channels
         self.running = threading.Lock()
         self.me = client.auth_test()['user_id']
+        self.cooldown: dict[str, float] = {}
 
     def run(self) -> dict:
         """One pass. Reports what it found and never raises."""
@@ -105,7 +111,8 @@ class Sweep:
                 continue
             call = next((m for m in thread['messages'] if m['ts'] == thread['call_ts']), None)
             have = theirs(call, self.me) if call else set()
-            if apply(self.client, thread['channel'], thread['call_ts'], card['status'], have):
+            if apply(self.client, thread['channel'], thread['call_ts'],
+                     card['status'], have):
                 fixed += 1
         return fixed
 
@@ -152,10 +159,21 @@ class Sweep:
             if newest > (card['read_up_to'] or '0'):
                 behind.append((newest, card, thread))
         behind.sort(key=lambda row: row[0])
-        for _, card, thread in behind[:REFRESH_BUDGET]:
-            refresh_card(self.client, self.board, self.summarizer, card,
-                         thread['channel'], thread['root'])
-        return f'{min(len(behind), REFRESH_BUDGET)} из {len(behind)}'
+        now = time.time()
+        ready = [row for row in behind if self.cooldown.get(row[1]['id'], 0) < now]
+        done = 0
+        for _, card, thread in ready[:REFRESH_BUDGET]:
+            try:
+                refresh_card(self.client, self.board, self.summarizer, card,
+                             thread['channel'], thread['root'])
+                self.cooldown.pop(card['id'], None)
+                done += 1
+            except Exception:
+                self.cooldown[card['id']] = now + COOLDOWN
+                log.exception('refresh of %s failed, on hold for %d s',
+                              card['id'], COOLDOWN)
+        waiting = len(behind) - len(ready)
+        return f'{done} из {len(behind)}' + (f', {waiting} в выдержке' if waiting else '')
 
     def _overdue(self, cards: list[dict], threads: dict) -> int:
         now = time.time()
