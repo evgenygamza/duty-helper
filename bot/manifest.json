@@ -86,7 +86,7 @@
     }
   },
   "settings": {
-    "org_deploy_enabled": false,
+    "org_deploy_enabled": true,
     "socket_mode_enabled": true,
     "token_rotation_enabled": false,
     "event_subscriptions": {
@@ -98,8 +98,31 @@
         "reaction_added",
         "reaction_removed",
         "file_shared",
-        "channel_created"
+        "channel_created",
+        "function_executed"
       ]
+    },
+    "function_runtime": "remote"
+  },
+  "functions": {
+    "react_in_thread": {
+      "title": "Отметить обращение в треде",
+      "description": "Ставит реакцию на исходное сообщение по статусу карточки",
+      "input_parameters": {
+        "thread_url": {
+          "type": "string",
+          "title": "Ссылка на тред",
+          "description": "Значение колонки «Тред» карточки",
+          "is_required": true
+        },
+        "status": {
+          "type": "string",
+          "title": "Статус карточки",
+          "description": "Новое значение колонки «Статус»",
+          "is_required": true
+        }
+      },
+      "output_parameters": {}
     }
   }
 }

@@ -7,13 +7,15 @@ The feed channel is for failures only: a duty call already pings people through
 the group mention in the original thread, so announcing it again is noise.
 """
 
+import json
 import logging
 import re
 
 from slack_bolt import App
 
-from .board import add_item, add_subtask, card_text, find_open_by_thread, update_summary
+from .board import Board, card_text
 from .config import Config
+from .feedback import register as register_feedback
 from .summarize import Summarizer
 
 log = logging.getLogger('duty')
@@ -22,28 +24,37 @@ log = logging.getLogger('duty')
 def build(cfg: Config) -> App:
     app = App(token=cfg.bot_token, logger=log)
     summarizer = Summarizer()
+    board = Board(app.client, cfg.list_id)
 
     @app.message(re.compile(re.escape(f'<!subteam^{cfg.duty_group}')))
     def on_call(message, client):
         channel = message['channel']
         ts = message.get('thread_ts', message['ts'])
         try:
-            handle(client, cfg, summarizer, channel, ts, message.get('user'))
+            handle(client, cfg, board, summarizer, channel, ts, message.get('user'))
         except Exception:
             log.exception('failed to handle call %s/%s', channel, ts)
             report_failure(client, cfg, channel, ts)
 
+    # Temporary: dump raw message events to find out what the board sends when
+    # a card changes. Bolt logs the type only.
+    @app.event('message')
+    def on_any_message(body, logger):
+        logger.info('RAW %s', json.dumps(body, ensure_ascii=False))
+
+    register_feedback(app)
     return app
 
 
-def handle(client, cfg: Config, summarizer: Summarizer, channel: str, ts: str, user: str) -> None:
+def handle(client, cfg: Config, board: Board, summarizer: Summarizer,
+           channel: str, ts: str, user: str) -> None:
     link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
     thread = client.conversations_replies(channel=channel, ts=ts, limit=200)['messages']
-    known = find_open_by_thread(client, cfg.list_id, link)
+    known = board.find_open_by_thread(link)
 
     if known is None:
         summary = summarizer.of_thread(thread)
-        item = add_item(client, cfg.list_id, summary, channel, user, link)
+        item = board.add_item(summary, channel, user, link)
         log.info('item %s created from thread %s/%s of %d messages', item, channel, ts, len(thread))
         return
 
@@ -53,10 +64,10 @@ def handle(client, cfg: Config, summarizer: Summarizer, channel: str, ts: str, u
     if answer['action'] == 'keep':
         log.info('card %s looks hand-written, left alone', known['id'])
     elif answer['action'] == 'subtask':
-        child = add_subtask(client, cfg.list_id, known['id'], answer)
+        child = board.add_subtask(known['id'], answer)
         log.info('subtask %s added under %s from thread %s/%s', child, known['id'], channel, ts)
     else:
-        update_summary(client, cfg.list_id, known['id'], answer)
+        board.update_summary(known['id'], answer)
         log.info('card %s refreshed from thread %s/%s of %d messages',
                  known['id'], channel, ts, len(thread))
 

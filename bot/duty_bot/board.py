@@ -1,7 +1,8 @@
 """The duty board: a Slack List, one item per duty call.
 
 Cells are addressed by column_id, not by the schema key — the key only works
-when reading. Ids come from files.info on the list.
+when reading. Ids are read from the list schema at startup, so recreating the
+board needs a new DUTY_LIST_ID and no code change.
 """
 
 import datetime as dt
@@ -9,22 +10,6 @@ import json
 import logging
 
 log = logging.getLogger('duty')
-
-# Comes from todo_mode, so it has a fixed id rather than a generated one.
-DUE_DATE = 'Col02'
-
-COLUMNS = {
-    'call': 'Col0BU7MVT94L',
-    'status': 'Col0BTNLS1CFR',
-    'problem': 'Col0BTZSS20JH',
-    'research': 'Col0BTXQAUWRZ',
-    'data': 'Col0BU5UXN001',
-    'asked_by': 'Col0BUYD16NQY',
-    'channel': 'Col0BU416MVT4',
-    'thread': 'Col0BU23Y5URL',
-    'incident': 'Col0BU7MW4M36',
-}
-
 
 # A card stays attached to its thread while it is open. A repeat mention in a
 # live thread must not spawn a second card; once the card is closed, the same
@@ -36,19 +21,6 @@ def _same_thread(a: str, b: str) -> bool:
     """A permalink grows a ?thread_ts=&cid= tail once the message has replies,
     so the query string cannot be part of the comparison."""
     return a.split('?')[0] == b.split('?')[0]
-
-
-def find_open_by_thread(client, list_id: str, url: str) -> dict | None:
-    resp = client.api_call('slackLists.items.list',
-                           params={'list_id': list_id, 'limit': 100})
-    for item in resp.get('items', []):
-        fields = {f['key']: f for f in item.get('fields', [])}
-        if fields.get('status', {}).get('value') not in OPEN_STATUSES:
-            continue
-        for link in fields.get('thread', {}).get('link') or []:
-            if _same_thread(link.get('originalUrl', ''), url):
-                return {'id': item['id'], 'fields': fields}
-    return None
 
 
 def plain(field: dict) -> str:
@@ -78,49 +50,68 @@ def _rich_text(text: str) -> list[dict]:
     }]
 
 
-def update_summary(client, list_id: str, item_id: str, summary: dict) -> None:
-    """Refresh what the card says about the call. Cells are addressed by
-    row_id + column_id; the schema key is read-only."""
-    client.api_call('slackLists.items.update', params={
-        'list_id': list_id,
-        'cells': json.dumps([
-            {'row_id': item_id, 'column_id': COLUMNS[key],
-             'rich_text': _rich_text(summary.get(key, '-'))}
+class Board:
+    def __init__(self, client, list_id: str):
+        self.client = client
+        self.list_id = list_id
+        schema = client.files_info(file=list_id)['file']['list_metadata']['schema']
+        self.columns = {column['key']: column['id'] for column in schema}
+        log.info('board %s: %d columns', list_id, len(self.columns))
+
+    def find_open_by_thread(self, url: str) -> dict | None:
+        resp = self.client.api_call('slackLists.items.list',
+                                    params={'list_id': self.list_id, 'limit': 100})
+        for item in resp.get('items', []):
+            fields = {f['key']: f for f in item.get('fields', [])}
+            if fields.get('status', {}).get('value') not in OPEN_STATUSES:
+                continue
+            for link in fields.get('thread', {}).get('link') or []:
+                if _same_thread(link.get('originalUrl', ''), url):
+                    return {'id': item['id'], 'fields': fields}
+        return None
+
+    def update_summary(self, item_id: str, summary: dict) -> None:
+        """Refresh what the card says about the call. Cells are addressed by
+        row_id + column_id; the schema key is read-only."""
+        self.client.api_call('slackLists.items.update', params={
+            'list_id': self.list_id,
+            'cells': json.dumps([
+                {'row_id': item_id, 'column_id': self.columns[key],
+                 'rich_text': _rich_text(summary.get(key, '-'))}
+                for key in ('call', 'problem', 'data')
+            ]),
+        })
+
+    def _summary_fields(self, summary: dict) -> list[dict]:
+        fields = [
+            {'column_id': self.columns[key], 'rich_text': _rich_text(summary.get(key, '-'))}
             for key in ('call', 'problem', 'data')
-        ]),
-    })
+        ]
+        fields.append({'column_id': self.columns['status'], 'select': ['new']})
+        return fields
 
+    def add_subtask(self, parent_id: str, summary: dict) -> str:
+        created = self.client.api_call('slackLists.items.create', params={
+            'list_id': self.list_id,
+            'parent_item_id': parent_id,
+            'initial_fields': json.dumps(self._summary_fields(summary)),
+        })
+        return created['item']['id']
 
-def add_subtask(client, list_id: str, parent_id: str, summary: dict) -> str:
-    created = client.api_call('slackLists.items.create', params={
-        'list_id': list_id,
-        'parent_item_id': parent_id,
-        'initial_fields': json.dumps([
-            {'column_id': COLUMNS['call'], 'rich_text': _rich_text(summary.get('call', ''))},
-            {'column_id': COLUMNS['problem'], 'rich_text': _rich_text(summary.get('problem', '-'))},
-            {'column_id': COLUMNS['data'], 'rich_text': _rich_text(summary.get('data', '-'))},
-            {'column_id': COLUMNS['status'], 'select': ['new']},
-        ]),
-    })
-    return created['item']['id']
-
-
-def add_item(client, list_id: str, summary: dict, channel: str, user: str, link: str) -> str:
-    fields = [
-        {'column_id': COLUMNS['call'], 'rich_text': _rich_text(summary.get('call', ''))},
-        {'column_id': COLUMNS['problem'], 'rich_text': _rich_text(summary.get('problem', '-'))},
-        {'column_id': COLUMNS['data'], 'rich_text': _rich_text(summary.get('data', '-'))},
-        {'column_id': COLUMNS['status'], 'select': ['new']},
-        # A new call is expected to be picked up the same day. Slack renders
-        # an overdue date itself; finer thresholds belong to the reminders.
-        {'column_id': DUE_DATE, 'date': [dt.date.today().isoformat()]},
-        {'column_id': COLUMNS['channel'], 'channel': [channel]},
-        {'column_id': COLUMNS['thread'], 'link': [{'original_url': link, 'display_name': 'тред'}]},
-    ]
-    if user:
-        fields.append({'column_id': COLUMNS['asked_by'], 'user': [user]})
-    created = client.api_call(
-        'slackLists.items.create',
-        params={'list_id': list_id, 'initial_fields': json.dumps(fields)},
-    )
-    return created['item']['id']
+    def add_item(self, summary: dict, channel: str, user: str, link: str) -> str:
+        fields = self._summary_fields(summary)
+        fields += [
+            # A new call is expected to be picked up the same day. Slack renders
+            # an overdue date itself; finer thresholds belong to the reminders.
+            {'column_id': self.columns['todo_due_date'], 'date': [dt.date.today().isoformat()]},
+            {'column_id': self.columns['channel'], 'channel': [channel]},
+            {'column_id': self.columns['thread'],
+             'link': [{'original_url': link, 'display_name': 'тред'}]},
+        ]
+        if user:
+            fields.append({'column_id': self.columns['asked_by'], 'user': [user]})
+        created = self.client.api_call(
+            'slackLists.items.create',
+            params={'list_id': self.list_id, 'initial_fields': json.dumps(fields)},
+        )
+        return created['item']['id']

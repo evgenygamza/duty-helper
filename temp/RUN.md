@@ -2,58 +2,99 @@
 
 На проде будет контейнер, это только для разработки.
 
+Работаем в песочнице **`duty-helper`**, Enterprise-орг `E0BU1D8791B`,
+воркспейс внутри — `T0BU98BAB5J`. Приложение `A0BU7PW74C9`.
+Прежняя песочница `sandbox-d879184` заброшена: она бесплатная, и custom steps
+на ней невозможны.
+
 ## Запуск
 
 ```bash
+export PATH="$HOME/.local/bin:$PATH"
 cd ~/Projects/duty-helper/bot
-set -a && . ~/.config/duty-helper/sandbox.env && set +a
-.venv/bin/python app.py > /tmp/duty-bot.log 2>&1 &
+set -a; . ~/.config/duty-helper/duty-helper.env; set +a
+export PYTHONUNBUFFERED=1
+slack run -w E0BU1D8791B --org-workspace-grant T0BU98BAB5J --hide-triggers \
+  > /tmp/duty-bot.log 2>&1 &
 ```
 
-Через несколько секунд в логе должно появиться `⚡️ Bolt app is running!`.
+Через полминуты в логе должно быть `⚡️ Bolt app is running!` и строка
+`board F0BU1P86005: N columns` — схему колонок бот читает при старте.
+
+Почему так, а не `python app.py`:
+
+- **`slack run`** сам подставляет `SLACK_BOT_TOKEN` и `SLACK_APP_TOKEN`, поэтому
+  токены нигде не лежат. Он же переустанавливает приложение при старте, так что
+  правка `manifest.json` доезжает сама, и следит за файлами — правку кода
+  подхватывает перезапуском
+- **`PYTHONUNBUFFERED=1`** обязателен: без него лог отстаёт на минуты, живой
+  бот выглядит мёртвым, и диагностика превращается в гадание. Проверено дважды
 
 ## Остановка и лог
 
 ```bash
-pkill -f "app.py"          # остановить
-pgrep -fl "app.py"         # проверить, жив ли
-tail -f /tmp/duty-bot.log  # смотреть лог
+pkill -f "slack run"          # остановить
+pgrep -fl "slack run"         # проверить, жив ли
+tail -f /tmp/duty-bot.log     # смотреть лог
 ```
 
 Лог перезаписывается при каждом запуске — если нужен прошлый, копируй до старта.
+`pgrep -fl app.py` теперь ничего не находит: процесс запускается под `slack run`.
 
 ## Что должно быть в окружении
 
-`~/.config/duty-helper/sandbox.env`, права 600, в репозиторий не попадает:
+Один файл, `~/.config/duty-helper/duty-helper.env`, права 600, лежит вне
+репозитория:
 
 ```
-SLACK_SANDBOX_TOKEN=xoxb-...       бот
-SLACK_SANDBOX_APP_TOKEN=xapp-...   Socket Mode
-SLACK_SANDBOX_USER_TOKEN=xoxp-...  поиск и чтение тредов
-GEMINI_API_KEY=...                 модель
-DUTY_GROUP_ID=S0BTF0KMJV6
-DUTY_FEED_CHANNEL=C0BTQL7AK4K
-DUTY_LIST_ID=F0BU23Y14PQ
+DUTY_GROUP_ID=S0BV0EVS7ME
+DUTY_FEED_CHANNEL=C0BU7RTJCDP
+DUTY_LIST_ID=F0BU1P86005
+GEMINI_API_KEY=...
 ```
+
+Слаковских токенов здесь нет и быть не должно: их подставляет `slack run`.
+Соседний `sandbox.env` — от заброшенной песочницы, больше не используется.
 
 Бот отказывается стартовать, если чего-то не хватает, и называет чего именно.
 
 ## Проверить, что живой
 
-Тегнуть `@qa-factset-dutyman` в `#channel-with-bot` — через несколько секунд
-в логе появится `item ... created`, на доске новая карточка.
+Тегнуть `@qa-factset-dutyman` в `#channel-with-bot` (`C0BU5TL051Q`) — через
+несколько секунд в логе появится `item ... created`, на доске новая карточка.
+
+Отметки в треде: подвигать статус карточки на доске, в логе появится
+`step called with {...}`. Ждать до 5 секунд.
 
 Если модель отвалилась или упёрлась в квоту, бот напишет в `#duty-feed`
 «не смог завести карточку» со ссылкой на тред. Пустой лог и тишина в канале
 означают, что событие не дошло вовсе.
+
+**Бесплатный тир Gemini — 20 запросов в сутки.** Выжигается за один вечер
+проверок, дальше всё падает в `#duty-feed`.
+
+## Вызовы API руками
+
+Своего токена нет, поэтому через CLI — он подставляет ботовый:
+
+```bash
+slack api <method> --app local -w E0BU1D8791B key=value
+slack api <method> --app local -w E0BU1D8791B --json '{"...": "..."}'
+```
+
+Формой `key=value` работает не всё: `usergroups.list` требует `team_id`
+именно так, а `--json` ей отвечает `missing_argument`.
 
 ## Правка прав приложения
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 cd ~/Projects/duty-helper/bot
-# поправить manifest.json, затем:
-slack install --app local --team T0BSDLTDKBM --force
+# поправить manifest.json, затем проверить и поставить:
+slack manifest validate --app A0BU7PW74C9 -w E0BU1D8791B
+slack install -E local -w E0BU1D8791B --org-workspace-grant T0BU98BAB5J --force
 ```
 
 `--force` обязателен: без него CLI хочет подтверждения в интерактиве.
+При обычном `slack run` переустановка происходит сама, отдельная команда нужна
+только чтобы поставить манифест без запуска.
