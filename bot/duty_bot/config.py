@@ -20,6 +20,7 @@ class Config:
     duty_group: str
     feed_channel: str
     list_id: str
+    sweep_seconds: int
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -29,6 +30,7 @@ class Config:
             duty_group=os.environ.get('DUTY_GROUP_ID', ''),
             feed_channel=os.environ.get('DUTY_FEED_CHANNEL', ''),
             list_id=os.environ.get('DUTY_LIST_ID', ''),
+            sweep_seconds=int(os.environ.get('DUTY_SWEEP_SECONDS') or 300),
         )
         missing = [n for n, v in (
             ('SLACK_BOT_TOKEN', cfg.bot_token),

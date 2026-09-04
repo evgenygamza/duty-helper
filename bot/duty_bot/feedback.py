@@ -1,13 +1,17 @@
-"""Board feedback: mark the original thread when a card moves.
+"""Board feedback: mark the call in its thread when the card moves.
 
 Slack sends no event when a list cell changes, so a Workflow Builder workflow
 watches the status column and calls this custom step. The step brings the thread
 to the marks the current status calls for, instead of reacting to a transition:
 a missed, repeated or out-of-order call ends in the same place.
+
+The trigger must fire on *any* change of the status field. Narrowed to one value
+it only ever calls in, and a mark then never comes off.
 """
 
 import logging
-from urllib.parse import urlsplit
+
+from .links import parse
 
 log = logging.getLogger('duty')
 
@@ -38,15 +42,6 @@ STATUS_MARKS.update({
 MANAGED = {mark for marks in STATUS_MARKS.values() for mark in marks}
 
 
-def message_ref(url: str) -> tuple[str, str]:
-    """Channel and timestamp out of a permalink: /archives/C123/p1788274985975879."""
-    parts = urlsplit(url).path.strip('/').split('/')
-    if len(parts) < 3 or parts[0] != 'archives':
-        raise ValueError(f'not a message permalink: {url}')
-    digits = parts[2].lstrip('p')
-    return parts[1], f'{digits[:-6]}.{digits[-6:]}'
-
-
 def mark_for(status: str, ts: str) -> str | None:
     marks = STATUS_MARKS.get(status)
     if not marks:
@@ -54,21 +49,43 @@ def mark_for(status: str, ts: str) -> str | None:
     return marks[int(ts.replace('.', '')) % len(marks)]
 
 
-def _apply(client, channel: str, ts: str, emoji: str, wanted: bool) -> str:
-    """Add or remove one mark. Already being in the wanted state is success."""
-    try:
-        if wanted:
-            client.reactions_add(channel=channel, timestamp=ts, name=emoji)
-        else:
-            client.reactions_remove(channel=channel, timestamp=ts, name=emoji)
-        return 'поставил' if wanted else 'снял'
-    except Exception as err:
-        if 'already_reacted' in str(err) or 'no_reaction' in str(err):
-            return 'уже как надо'
-        raise
+def ours(client, channel: str, ts: str) -> set[str]:
+    """Managed marks the bot already put there. One read beats guessing:
+    without it every call fires an add or a remove for each managed mark."""
+    resp = client.reactions_get(channel=channel, timestamp=ts)
+    me = client.auth_test()['user_id']
+    return {
+        r['name'] for r in resp.get('message', {}).get('reactions', [])
+        if r['name'] in MANAGED and me in (r.get('users') or [])
+    }
 
 
-def register(app) -> None:
+def theirs(message: dict, me: str) -> set[str]:
+    """Managed marks the bot has on an already fetched message."""
+    return {
+        r['name'] for r in message.get('reactions') or []
+        if r['name'] in MANAGED and me in (r.get('users') or [])
+    }
+
+
+def apply(client, channel: str, ts: str, status: str, have: set[str]) -> dict[str, str]:
+    """Bring the message to exactly the mark the status calls for."""
+    wanted = mark_for(status, ts)
+    changed = {}
+    if wanted and wanted not in have:
+        client.reactions_add(channel=channel, timestamp=ts, name=wanted)
+        changed[wanted] = 'поставил'
+    for stale in have - {wanted}:
+        client.reactions_remove(channel=channel, timestamp=ts, name=stale)
+        changed[stale] = 'снял'
+    return changed
+
+
+def reconcile(client, channel: str, ts: str, status: str) -> dict[str, str]:
+    return apply(client, channel, ts, status, ours(client, channel, ts))
+
+
+def register(app, board) -> None:
     @app.function('react_in_thread')
     def react_in_thread(inputs, client, complete, fail):
         log.info('step called with %s', inputs)
@@ -78,10 +95,11 @@ def register(app) -> None:
             complete({})
             return
         try:
-            channel, ts = message_ref(inputs.get('thread_url') or '')
-            wanted = mark_for(status, ts)
-            done = {emoji: _apply(client, channel, ts, emoji, emoji == wanted)
-                    for emoji in sorted(MANAGED)}
+            channel, ts, root = parse(inputs.get('thread_url') or '')
+            changed = reconcile(client, channel, ts, status)
+            card = board.find_by_root(root, only_open=False)
+            if card:
+                board.touch_status_since(card['id'])
         except ValueError as bad_url:
             log.error('bad thread link: %s', bad_url)
             fail(str(bad_url))
@@ -90,6 +108,5 @@ def register(app) -> None:
             log.exception('could not mark the thread')
             fail(str(err))
             return
-        changed = {e: what for e, what in done.items() if what != 'уже как надо'}
-        log.info('%s/%s for status %r: want %s, changed %s', channel, ts, status, wanted, changed)
+        log.info('%s/%s for status %r: %s', channel, ts, status, changed or 'уже как надо')
         complete({})

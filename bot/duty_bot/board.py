@@ -3,24 +3,28 @@
 Cells are addressed by column_id, not by the schema key — the key only works
 when reading. Ids are read from the list schema at startup, so recreating the
 board needs a new DUTY_LIST_ID and no code change.
+
+Two columns are the bot's own bookkeeping and no human should touch them:
+«Прочитано» holds the ts of the last thread message folded into the summary,
+«В статусе с» the moment the card entered its current status. The list's own
+updated_timestamp cannot serve either: it moves on any edit, a human's included.
 """
 
 import datetime as dt
 import json
 import logging
 
+from .links import root_of
+
 log = logging.getLogger('duty')
 
 # A card stays attached to its thread while it is open. A repeat mention in a
 # live thread must not spawn a second card; once the card is closed, the same
-# thread may legitimately start a new one.
+# thread may legitimately start a new one. The sweep matches closed cards too —
+# there nobody said anything new, so an old card means the call is handled.
 OPEN_STATUSES = ('new', 'in_progress', 'waiting_author', 'waiting_factset')
 
-
-def _same_thread(a: str, b: str) -> bool:
-    """A permalink grows a ?thread_ts=&cid= tail once the message has replies,
-    so the query string cannot be part of the comparison."""
-    return a.split('?')[0] == b.split('?')[0]
+SUMMARY_KEYS = ('call', 'problem', 'data')
 
 
 def plain(field: dict) -> str:
@@ -38,6 +42,11 @@ def card_text(fields: dict) -> str:
         f'{title}: {plain(fields.get(key, {}))}'
         for key, title in (('call', 'Обращение'), ('problem', 'Проблема'), ('data', 'Данные'))
     )
+
+
+def thread_link(fields: dict) -> str:
+    links = fields.get('thread', {}).get('link') or []
+    return links[0].get('originalUrl', '') if links else ''
 
 
 def _rich_text(text: str) -> list[dict]:
@@ -58,34 +67,59 @@ class Board:
         self.columns = {column['key']: column['id'] for column in schema}
         log.info('board %s: %d columns', list_id, len(self.columns))
 
-    def find_open_by_thread(self, url: str) -> dict | None:
+    def cards(self) -> list[dict]:
         resp = self.client.api_call('slackLists.items.list',
                                     params={'list_id': self.list_id, 'limit': 100})
+        out = []
         for item in resp.get('items', []):
             fields = {f['key']: f for f in item.get('fields', [])}
-            if fields.get('status', {}).get('value') not in OPEN_STATUSES:
+            out.append({
+                'id': item['id'],
+                'fields': fields,
+                'status': fields.get('status', {}).get('value'),
+                'root': root_of(thread_link(fields)),
+                'read_up_to': plain(fields.get('read_up_to', {})),
+            })
+        return out
+
+    def find_by_root(self, root: str, *, only_open: bool = True,
+                     cards: list[dict] | None = None) -> dict | None:
+        for card in (cards if cards is not None else self.cards()):
+            if card['root'] != root:
                 continue
-            for link in fields.get('thread', {}).get('link') or []:
-                if _same_thread(link.get('originalUrl', ''), url):
-                    return {'id': item['id'], 'fields': fields}
+            if only_open and card['status'] not in OPEN_STATUSES:
+                continue
+            return card
         return None
 
-    def update_summary(self, item_id: str, summary: dict) -> None:
-        """Refresh what the card says about the call. Cells are addressed by
-        row_id + column_id; the schema key is read-only."""
+    def _cells(self, item_id: str, values: dict[str, list | str]) -> list[dict]:
+        cells = []
+        for key, value in values.items():
+            cell = {'row_id': item_id, 'column_id': self.columns[key]}
+            cell.update(value if isinstance(value, dict) else {'rich_text': _rich_text(value)})
+            cells.append(cell)
+        return cells
+
+    def write(self, item_id: str, values: dict) -> None:
         self.client.api_call('slackLists.items.update', params={
             'list_id': self.list_id,
-            'cells': json.dumps([
-                {'row_id': item_id, 'column_id': self.columns[key],
-                 'rich_text': _rich_text(summary.get(key, '-'))}
-                for key in ('call', 'problem', 'data')
-            ]),
+            'cells': json.dumps(self._cells(item_id, values)),
         })
 
-    def _summary_fields(self, summary: dict) -> list[dict]:
+    def update_summary(self, item_id: str, summary: dict, read_up_to: str = '') -> None:
+        """Refresh what the card says, and mark how far the thread was read."""
+        values = {key: summary.get(key, '-') for key in SUMMARY_KEYS}
+        if read_up_to:
+            values['read_up_to'] = read_up_to
+        self.write(item_id, values)
+
+    def touch_status_since(self, item_id: str) -> None:
+        self.write(item_id, {'status_since': f'{dt.datetime.now().timestamp():.6f}'})
+
+    def _initial(self, summary: dict) -> list[dict]:
         fields = [
             {'column_id': self.columns[key], 'rich_text': _rich_text(summary.get(key, '-'))}
-            for key in ('call', 'problem', 'data')
+            for key in SUMMARY_KEYS
         ]
         fields.append({'column_id': self.columns['status'], 'select': ['new']})
         return fields
@@ -94,12 +128,14 @@ class Board:
         created = self.client.api_call('slackLists.items.create', params={
             'list_id': self.list_id,
             'parent_item_id': parent_id,
-            'initial_fields': json.dumps(self._summary_fields(summary)),
+            'initial_fields': json.dumps(self._initial(summary)),
         })
         return created['item']['id']
 
-    def add_item(self, summary: dict, channel: str, user: str, link: str) -> str:
-        fields = self._summary_fields(summary)
+    def add_item(self, summary: dict, channel: str, user: str, link: str,
+                 read_up_to: str = '') -> str:
+        now = f'{dt.datetime.now().timestamp():.6f}'
+        fields = self._initial(summary)
         fields += [
             # A new call is expected to be picked up the same day. Slack renders
             # an overdue date itself; finer thresholds belong to the reminders.
@@ -107,6 +143,8 @@ class Board:
             {'column_id': self.columns['channel'], 'channel': [channel]},
             {'column_id': self.columns['thread'],
              'link': [{'original_url': link, 'display_name': 'тред'}]},
+            {'column_id': self.columns['status_since'], 'rich_text': _rich_text(now)},
+            {'column_id': self.columns['read_up_to'], 'rich_text': _rich_text(read_up_to)},
         ]
         if user:
             fields.append({'column_id': self.columns['asked_by'], 'user': [user]})

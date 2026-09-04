@@ -1,22 +1,24 @@
 """Collect duty calls from channels the bot is in and put them on the board.
 
-Slack only delivers events from channels the bot has joined. Searching the rest
-of the workspace is a separate stage.
+Slack only delivers events from channels the bot has joined; the sweep covers
+the rest. Both paths go through `cards.py`, so a call found either way becomes
+the same card.
 
 The feed channel is for failures only: a duty call already pings people through
 the group mention in the original thread, so announcing it again is noise.
 """
 
-import json
 import logging
 import re
 
 from slack_bolt import App
 
-from .board import Board, card_text
+from .board import Board
+from .cards import handle
 from .config import Config
 from .feedback import register as register_feedback
 from .summarize import Summarizer
+from .sweep import Sweep
 
 log = logging.getLogger('duty')
 
@@ -29,47 +31,30 @@ def build(cfg: Config) -> App:
     @app.message(re.compile(re.escape(f'<!subteam^{cfg.duty_group}')))
     def on_call(message, client):
         channel = message['channel']
-        ts = message.get('thread_ts', message['ts'])
+        call_ts = message['ts']
+        root_ts = message.get('thread_ts', call_ts)
         try:
-            handle(client, cfg, board, summarizer, channel, ts, message.get('user'))
+            handle(client, board, summarizer, channel, call_ts, root_ts, message.get('user'))
         except Exception:
-            log.exception('failed to handle call %s/%s', channel, ts)
-            report_failure(client, cfg, channel, ts)
+            log.exception('failed to handle call %s/%s', channel, call_ts)
+            report_failure(client, cfg, channel, call_ts)
 
-    # Temporary: dump raw message events to find out what the board sends when
-    # a card changes. Bolt logs the type only.
-    @app.event('message')
-    def on_any_message(body, logger):
-        logger.info('RAW %s', json.dumps(body, ensure_ascii=False))
-
-    register_feedback(app)
+    register_feedback(app, board)
+    sweep = Sweep(cfg, app.client, board, summarizer, watched_channels(app.client, cfg))
+    sweep.every(cfg.sweep_seconds)
     return app
 
 
-def handle(client, cfg: Config, board: Board, summarizer: Summarizer,
-           channel: str, ts: str, user: str) -> None:
-    link = client.chat_getPermalink(channel=channel, message_ts=ts)['permalink']
-    thread = client.conversations_replies(channel=channel, ts=ts, limit=200)['messages']
-    known = board.find_open_by_thread(link)
+def watched_channels(client, cfg: Config) -> list[str]:
+    """Channels the bot is in — no config to keep in sync. The feed is left out:
+    the bot writes there itself and no call arrives that way.
 
-    if known is None:
-        summary = summarizer.of_thread(thread)
-        item = board.add_item(summary, channel, user, link)
-        log.info('item %s created from thread %s/%s of %d messages', item, channel, ts, len(thread))
-        return
-
-    # The thread is already on the board. Either it grew and the card needs a
-    # fresher summary, or a second, different problem showed up in it.
-    answer = summarizer.of_repeat(thread, card_text(known['fields']))
-    if answer['action'] == 'keep':
-        log.info('card %s looks hand-written, left alone', known['id'])
-    elif answer['action'] == 'subtask':
-        child = board.add_subtask(known['id'], answer)
-        log.info('subtask %s added under %s from thread %s/%s', child, known['id'], channel, ts)
-    else:
-        board.update_summary(known['id'], answer)
-        log.info('card %s refreshed from thread %s/%s of %d messages',
-                 known['id'], channel, ts, len(thread))
+    An org-wide install has to name the workspace, and auth.test only reports
+    the enterprise; the feed channel knows which workspace it belongs to."""
+    team = client.conversations_info(channel=cfg.feed_channel)['channel']['context_team_id']
+    resp = client.users_conversations(
+        types='public_channel,private_channel', team_id=team, limit=200)
+    return [c['id'] for c in resp.get('channels', []) if c['id'] != cfg.feed_channel]
 
 
 def report_failure(client, cfg: Config, channel: str, ts: str) -> None:
