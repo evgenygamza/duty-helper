@@ -9,6 +9,7 @@ The trigger must fire on *any* change of the status field. Narrowed to one value
 it only ever calls in, and a mark then never comes off.
 """
 
+import hashlib
 import logging
 
 from .links import parse
@@ -43,10 +44,15 @@ MANAGED = {mark for marks in STATUS_MARKS.values() for mark in marks}
 
 
 def mark_for(status: str, ts: str) -> str | None:
+    """Same mark for one message forever, spread evenly across messages.
+
+    Hashed rather than taken modulo the timestamp: Slack stamps always end in 9,
+    so a plain remainder is always odd and half the variants are unreachable."""
     marks = STATUS_MARKS.get(status)
     if not marks:
         return None
-    return marks[int(ts.replace('.', '')) % len(marks)]
+    digest = hashlib.sha1(ts.encode()).hexdigest()
+    return marks[int(digest, 16) % len(marks)]
 
 
 def ours(client, channel: str, ts: str) -> set[str]:
