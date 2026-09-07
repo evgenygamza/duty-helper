@@ -22,6 +22,7 @@ class Config:
     list_id: str
     sweep_seconds: int
     user_token: str
+    search_filter: str
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -34,6 +35,9 @@ class Config:
             sweep_seconds=int(os.environ.get('DUTY_SWEEP_SECONDS') or 300),
             # Optional: without it the sweep sees only the bot's own channels.
             user_token=_first('SLACK_USER_TOKEN', 'SLACK_SANDBOX_USER_TOKEN'),
+            # Slack's own search modifiers, appended verbatim. Empty by default:
+            # an alert with the group tagged may well be a call worth carding.
+            search_filter=os.environ.get('DUTY_SEARCH_FILTER', '').strip(),
         )
         missing = [n for n, v in (
             ('SLACK_BOT_TOKEN', cfg.bot_token),

@@ -205,11 +205,12 @@ class Sweep:
             return []
         self.searched = now
         after = dt.date.today() - dt.timedelta(days=SEARCH_DAYS)
-        resp = self.user.search_messages(
-            query=f'@{self.handle} after:{after.isoformat()}',
-            team_id=self.team, count=100)
+        query = ' '.join(part for part in (
+            f'@{self.handle}', f'after:{after.isoformat()}', self.cfg.search_filter,
+        ) if part)
+        resp = self.user.search_messages(query=query, team_id=self.team, count=100)
         matches = resp.get('messages', {}).get('matches', [])
-        log.info('search: %s, найдено %d', self.handle, len(matches))
+        log.info('search: %r, найдено %d', query, len(matches))
         out = []
         for match in matches:
             channel = (match.get('channel') or {}).get('id')
