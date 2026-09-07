@@ -51,7 +51,14 @@ DUTY_GROUP_ID=S0BV0EVS7ME
 DUTY_FEED_CHANNEL=C0BU7RTJCDP
 DUTY_LIST_ID=F0C0GH9K3L0
 GEMINI_API_KEY=...
+SLACK_USER_TOKEN=xoxp-...     поиск и отметки в каналах без бота
+DUTY_SWEEP_SECONDS=15         сейчас тестовое, рабочее около 120
+DUTY_SEARCH_FILTER=           модификаторы поиска, пусто = не отсекаем
 ```
+
+Обязательны только первые три и `GEMINI_API_KEY`. Без `SLACK_USER_TOKEN`
+бот стартует, но обход видит лишь каналы, где бот состоит, — в лог уходит
+предупреждение.
 
 Слаковских токенов здесь нет и быть не должно: их подставляет `slack run`.
 Соседний `sandbox.env` — от заброшенной песочницы, больше не используется.
