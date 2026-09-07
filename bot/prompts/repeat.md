@@ -38,5 +38,9 @@ Rules, in order of importance:
 - «посмотрите пожалуйста», «поднимаю», «что там?» are requests for attention,
   not new problems
 - a new symbol or ticket in the same breakage is not a new problem either
+- **a correction retires what it corrects.** «замените X на Y», «не X, а Y»,
+  «ошибся» — `data` keeps only the current value, the retired one goes, and the
+  correction itself is worth a word in `problem`. This is about facts the thread
+  states; text a person wrote into the card is still never thrown away
 - never invent. Describe only what the thread says
 - answer in Russian, be terse

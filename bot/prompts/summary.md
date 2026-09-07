@@ -25,5 +25,9 @@ Rules:
   пожалуйста», «поднимаю», «обновите карточку» are how people ask for
   attention; the problem is whatever the thread is about
 - describe the state as of the whole thread, not only the newest message
+- **a correction retires what it corrects.** «замените X на Y», «не X, а Y»,
+  «ошибся» — only the current value belongs in `data`; the retired one goes.
+  Mention the correction in `problem` if it matters. `data` is what the engineer
+  will go and check, so a stale symbol sends them to the wrong place
 - do not propose a fix and do not rate severity, a human does that
 - copy symbol, ticket and service names verbatim
