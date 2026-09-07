@@ -21,6 +21,7 @@ class Config:
     feed_channel: str
     list_id: str
     sweep_seconds: int
+    user_token: str
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -31,6 +32,8 @@ class Config:
             feed_channel=os.environ.get('DUTY_FEED_CHANNEL', ''),
             list_id=os.environ.get('DUTY_LIST_ID', ''),
             sweep_seconds=int(os.environ.get('DUTY_SWEEP_SECONDS') or 300),
+            # Optional: without it the sweep sees only the bot's own channels.
+            user_token=_first('SLACK_USER_TOKEN', 'SLACK_SANDBOX_USER_TOKEN'),
         )
         missing = [n for n, v in (
             ('SLACK_BOT_TOKEN', cfg.bot_token),

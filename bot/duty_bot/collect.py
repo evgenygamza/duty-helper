@@ -12,6 +12,7 @@ import logging
 import re
 
 from slack_bolt import App
+from slack_sdk import WebClient
 
 from .board import Board
 from .cards import handle
@@ -40,21 +41,40 @@ def build(cfg: Config) -> App:
             report_failure(client, cfg, channel, call_ts)
 
     register_feedback(app, board)
-    sweep = Sweep(cfg, app.client, board, summarizer, watched_channels(app.client, cfg))
+
+    team = workspace_of(app.client, cfg)
+    user = WebClient(token=cfg.user_token) if cfg.user_token else None
+    if user is None:
+        log.warning('no user token: the sweep sees only channels the bot is in')
+    sweep = Sweep(cfg, app.client, user, board, summarizer,
+                  watched_channels(app.client, cfg, team), team,
+                  group_handle(app.client, cfg, team))
     sweep.every(cfg.sweep_seconds)
     return app
 
 
-def watched_channels(client, cfg: Config) -> list[str]:
-    """Channels the bot is in — no config to keep in sync. The feed is left out:
-    the bot writes there itself and no call arrives that way.
+def workspace_of(client, cfg: Config) -> str:
+    """An org-wide install has to name the workspace in nearly every call, and
+    auth.test only reports the enterprise. The feed channel knows which
+    workspace it belongs to."""
+    return client.conversations_info(channel=cfg.feed_channel)['channel']['context_team_id']
 
-    An org-wide install has to name the workspace, and auth.test only reports
-    the enterprise; the feed channel knows which workspace it belongs to."""
-    team = client.conversations_info(channel=cfg.feed_channel)['channel']['context_team_id']
+
+def watched_channels(client, cfg: Config, team: str) -> list[str]:
+    """Channels the bot is in — no config to keep in sync. The feed is left out:
+    the bot writes there itself and no call arrives that way."""
     resp = client.users_conversations(
         types='public_channel,private_channel', team_id=team, limit=200)
     return [c['id'] for c in resp.get('channels', []) if c['id'] != cfg.feed_channel]
+
+
+def group_handle(client, cfg: Config, team: str) -> str:
+    """Search needs the handle, the config carries the id."""
+    for group in client.usergroups_list(team_id=team).get('usergroups', []):
+        if group['id'] == cfg.duty_group:
+            return group['handle']
+    log.warning('group %s has no handle here, search disabled', cfg.duty_group)
+    return ''
 
 
 def report_failure(client, cfg: Config, channel: str, ts: str) -> None:

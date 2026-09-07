@@ -12,6 +12,7 @@ The truth is always Slack's: statuses, marks and threads are read afresh every
 pass. The bot keeps no state of its own beyond what the cards themselves hold.
 """
 
+import datetime as dt
 import logging
 import threading
 import time
@@ -36,17 +37,33 @@ STALE_AFTER = 24 * 3600
 # quota in minutes, so a card that broke is left alone for a while.
 COOLDOWN = 600
 
+# How far back search looks. No watermark is kept: a call is matched against
+# every card on the board, so looking too far costs a longer query, not dupes.
+SEARCH_DAYS = 7
+
 
 class Sweep:
-    def __init__(self, cfg, client, board, summarizer, channels: list[str]):
+    def __init__(self, cfg, bot, user, board, summarizer, channels: list[str],
+                 team: str, handle: str):
         self.cfg = cfg
-        self.client = client
+        self.bot = bot
+        self.user = user
         self.board = board
         self.summarizer = summarizer
-        self.channels = channels
+        self.channels = set(channels)
+        self.team = team
+        self.handle = handle
         self.running = threading.Lock()
-        self.me = client.auth_test()['user_id']
         self.cooldown: dict[str, float] = {}
+        # Both identities put marks on messages, so both have to be recognised.
+        self.ids = {bot.auth_test()['user_id']}
+        if user:
+            self.ids.add(user.auth_test()['user_id'])
+
+    def by(self, channel: str):
+        """The bot cannot read a thread or react in a channel it is not in, and
+        it cannot join thousands of them. There the user token stands in."""
+        return self.bot if channel in self.channels else (self.user or self.bot)
 
     def run(self) -> dict:
         """One pass. Reports what it found and never raises."""
@@ -90,7 +107,7 @@ class Sweep:
                 continue
             try:
                 channel, ts, root = parse(link)
-                messages = self.client.conversations_replies(
+                messages = self.by(channel).conversations_replies(
                     channel=channel, ts=root, limit=200)['messages']
             except Exception as err:
                 failures.append(f'тред карточки {card["id"]}: {err}')
@@ -110,9 +127,9 @@ class Sweep:
             if not thread or not card['status']:
                 continue
             call = next((m for m in thread['messages'] if m['ts'] == thread['call_ts']), None)
-            have = theirs(call, self.me) if call else set()
-            if apply(self.client, thread['channel'], thread['call_ts'],
-                     card['status'], have):
+            have = theirs(call, self.ids) if call else set()
+            if apply(self.by(thread['channel']), thread['channel'],
+                     thread['call_ts'], card['status'], have):
                 fixed += 1
         return fixed
 
@@ -121,30 +138,76 @@ class Sweep:
         closed ones included: there nobody said anything new, so an old card
         means the call is already handled.
 
-        conversations.history only returns the top level, so a call written as a
-        reply is invisible there — threads of carded calls are already in hand,
+        Two sources, because neither covers everything. History is exact but
+        only reaches the bot's own channels; search reaches the whole workspace
+        but lags behind by a few tens of seconds and needs a person's token.
+        """
+        made = 0
+        for channel, call_ts, root_ts, user in self._candidates(threads):
+            if self.board.find_by_root(root_ts, only_open=False, cards=cards):
+                continue
+            try:
+                open_card(self.by(channel), self.board, self.summarizer,
+                          channel, call_ts, root_ts, user)
+            except Exception:
+                log.exception('could not open a card for %s/%s', channel, call_ts)
+                continue
+            cards = self.board.cards()
+            made += 1
+        return made
+
+    def _candidates(self, threads: dict) -> list[tuple[str, str, str, str | None]]:
+        seen: set[tuple[str, str]] = set()
+        found = []
+        for channel, call_ts, root_ts, user in self._from_history(threads) + self._from_search():
+            if (channel, root_ts) in seen:
+                continue
+            seen.add((channel, root_ts))
+            found.append((channel, call_ts, root_ts, user))
+        return found
+
+    def _from_history(self, threads: dict) -> list[tuple]:
+        """conversations.history only returns the top level, so a call written as
+        a reply is invisible there — threads of carded calls are already in hand,
         the rest are opened only when they have replies at all."""
         tag = f'<!subteam^{self.cfg.duty_group}'
         known_roots = {t['root'] for t in threads.values()}
-        made = 0
-        for channel in self.channels:
-            top = self.client.conversations_history(channel=channel, limit=200)['messages']
+        out = []
+        for channel in sorted(self.channels):
+            top = self.bot.conversations_history(channel=channel, limit=200)['messages']
             for message in top:
                 root_ts = message['ts']
                 candidates = [message]
                 if message.get('reply_count') and root_ts not in known_roots:
-                    candidates = self.client.conversations_replies(
+                    candidates = self.bot.conversations_replies(
                         channel=channel, ts=root_ts, limit=200)['messages']
                 for candidate in candidates:
-                    if tag not in (candidate.get('text') or ''):
-                        continue
-                    if self.board.find_by_root(root_ts, only_open=False, cards=cards):
+                    if tag in (candidate.get('text') or ''):
+                        out.append((channel, candidate['ts'], root_ts, candidate.get('user')))
                         break
-                    open_card(self.client, self.board, self.summarizer, channel,
-                              candidate['ts'], root_ts, candidate.get('user'))
-                    made += 1
-                    break
-        return made
+        return out
+
+    def _from_search(self) -> list[tuple]:
+        """The whole workspace, through a person's token. The handle needs its
+        `@`: without it search matches the words, not the real subteam tag."""
+        if not self.user or not self.handle:
+            return []
+        after = dt.date.today() - dt.timedelta(days=SEARCH_DAYS)
+        resp = self.user.search_messages(
+            query=f'@{self.handle} after:{after.isoformat()}',
+            team_id=self.team, count=100)
+        out = []
+        for match in resp.get('messages', {}).get('matches', []):
+            channel = (match.get('channel') or {}).get('id')
+            permalink = match.get('permalink') or ''
+            if not channel or not permalink:
+                continue
+            try:
+                _, call_ts, root_ts = parse(permalink)
+            except ValueError:
+                continue
+            out.append((channel, call_ts, root_ts, match.get('user')))
+        return out
 
     def _refresh(self, cards: list[dict], threads: dict) -> str:
         """The thread grew past «Прочитано», so the summary is behind. That
@@ -164,8 +227,8 @@ class Sweep:
         done = 0
         for _, card, thread in ready[:REFRESH_BUDGET]:
             try:
-                refresh_card(self.client, self.board, self.summarizer, card,
-                             thread['channel'], thread['root'])
+                refresh_card(self.by(thread['channel']), self.board, self.summarizer,
+                             card, thread['channel'], thread['root'])
                 self.cooldown.pop(card['id'], None)
                 done += 1
             except Exception:
@@ -191,7 +254,7 @@ class Sweep:
     def _report_failures(self, failures: list[str]) -> None:
         text = 'Сверка прошла с ошибками:\n' + '\n'.join(f'• {f}' for f in failures)
         try:
-            self.client.chat_postMessage(channel=self.cfg.feed_channel, text=text)
+            self.bot.chat_postMessage(channel=self.cfg.feed_channel, text=text)
         except Exception:
             log.exception('could not report the sweep failures')
 

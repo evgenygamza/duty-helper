@@ -59,11 +59,16 @@ def ours(client, channel: str, ts: str) -> set[str]:
     }
 
 
-def theirs(message: dict, me: str) -> set[str]:
-    """Managed marks the bot has on an already fetched message."""
+def theirs(message: dict, ids: set[str]) -> set[str]:
+    """Managed marks put there by us on an already fetched message.
+
+    «Us» is more than one identity: in a channel the bot is not in, marks go
+    through the user token and carry that person's id instead. Recognising only
+    the bot would make the sweep think there is no mark and add a second one.
+    """
     return {
         r['name'] for r in message.get('reactions') or []
-        if r['name'] in MANAGED and me in (r.get('users') or [])
+        if r['name'] in MANAGED and ids & set(r.get('users') or [])
     }
 
 
