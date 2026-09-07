@@ -41,6 +41,11 @@ COOLDOWN = 600
 # every card on the board, so looking too far costs a longer query, not dupes.
 SEARCH_DAYS = 7
 
+# Seconds of interval per open card. A pass spends one conversations.replies
+# on each, and the limit is around fifty a minute — so the interval has to grow
+# with the board or a busy day starts hitting 429.
+PER_CARD = 3
+
 # Search has its own pace. The index lags some twenty seconds, so asking more
 # often than that buys nothing, and it runs under a person's token — four
 # queries a minute read as a human sitting there all day.
@@ -273,16 +278,26 @@ class Sweep:
         except Exception:
             log.exception('could not report the sweep failures')
 
+    def pace(self, floor: int, cards: int) -> int:
+        """The configured interval, but never faster than the board allows."""
+        return max(floor, cards * PER_CARD)
+
     def every(self, seconds: int) -> None:
         """Run in the background: once now, then on a timer. Socket Mode keeps
         a pool of ten workers, so a pass does not hold up event handling."""
         def loop():
             while True:
+                report = {}
                 try:
-                    self.run()
+                    report = self.run()
                 except Exception:
                     log.exception('sweep loop')
-                time.sleep(seconds)
+                wait = self.pace(seconds, report.get('карточек', 0))
+                if wait != seconds:
+                    log.info('sweep waits %d s: %s cards on the board',
+                             wait, report.get('карточек'))
+                time.sleep(wait)
 
         threading.Thread(target=loop, name='sweep', daemon=True).start()
-        log.info('sweep every %d s over %d channels', seconds, len(self.channels))
+        log.info('sweep every %d s over %d channels, %d s per card',
+                 seconds, len(self.channels), PER_CARD)
