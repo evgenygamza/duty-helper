@@ -41,6 +41,11 @@ COOLDOWN = 600
 # every card on the board, so looking too far costs a longer query, not dupes.
 SEARCH_DAYS = 7
 
+# Search has its own pace. The index lags some twenty seconds, so asking more
+# often than that buys nothing, and it runs under a person's token — four
+# queries a minute read as a human sitting there all day.
+SEARCH_EVERY = 60
+
 
 class Sweep:
     def __init__(self, cfg, bot, user, board, summarizer, channels: list[str],
@@ -55,6 +60,7 @@ class Sweep:
         self.handle = handle
         self.running = threading.Lock()
         self.cooldown: dict[str, float] = {}
+        self.searched = 0.0
         # Both identities put marks on messages, so both have to be recognised.
         self.ids = {bot.auth_test()['user_id']}
         if user:
@@ -189,15 +195,23 @@ class Sweep:
 
     def _from_search(self) -> list[tuple]:
         """The whole workspace, through a person's token. The handle needs its
-        `@`: without it search matches the words, not the real subteam tag."""
+        `@`: without it search matches the words, not the real subteam tag.
+
+        Runs on its own, slower clock — see SEARCH_EVERY."""
         if not self.user or not self.handle:
             return []
+        now = time.monotonic()
+        if now - self.searched < SEARCH_EVERY:
+            return []
+        self.searched = now
         after = dt.date.today() - dt.timedelta(days=SEARCH_DAYS)
         resp = self.user.search_messages(
             query=f'@{self.handle} after:{after.isoformat()}',
             team_id=self.team, count=100)
+        matches = resp.get('messages', {}).get('matches', [])
+        log.info('search: %s, найдено %d', self.handle, len(matches))
         out = []
-        for match in resp.get('messages', {}).get('matches', []):
+        for match in matches:
             channel = (match.get('channel') or {}).get('id')
             permalink = match.get('permalink') or ''
             if not channel or not permalink:
