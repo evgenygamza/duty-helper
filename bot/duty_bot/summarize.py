@@ -20,6 +20,11 @@ log = logging.getLogger('duty')
 _PROMPTS = Path(__file__).parent.parent / 'prompts'
 PROMPT = (_PROMPTS / 'summary.md').read_text(encoding='utf-8')
 REPEAT_PROMPT = (_PROMPTS / 'repeat.md').read_text(encoding='utf-8')
+# What the duty person can have drafted from a card, by the word that asks for it.
+DRAFT_PROMPTS = {
+    'letter': (_PROMPTS / 'letter_draft.md').read_text(encoding='utf-8'),
+    'incident': (_PROMPTS / 'incident_draft.md').read_text(encoding='utf-8'),
+}
 # 3.7-flash is congested on the free tier and times out; 3.6 answers.
 MODEL = 'gemini-3.6-flash'
 
@@ -39,6 +44,22 @@ class Summarizer:
         if answer.get('action') not in ('refresh', 'subtask', 'keep'):
             answer['action'] = 'refresh'
         return answer
+
+    def of_draft(self, kind: str, messages: list[dict], card: str, notes: str = '') -> dict:
+        """A letter or an incident drawn from the card, its thread and what the
+        duty person said in the comments — the comments are the fresher word."""
+        return self._ask(DRAFT_PROMPTS[kind], '\n\n'.join(part for part in (
+            f'Карточка:\n{card}',
+            f'Тред целиком:\n{render(messages)}',
+            f'Дежурный в комментариях к карточке:\n{notes}' if notes else '',
+        ) if part))
+
+    def of_fix(self, kind: str, subject: str, body: str, correction: str) -> dict:
+        """The same draft with one correction carried out, nothing else touched."""
+        return self._ask(DRAFT_PROMPTS[kind], '\n\n'.join((
+            f'Черновик сейчас:\nТема: {subject}\n\n{body}',
+            f'Поправка от дежурного:\n{correction}',
+        )))
 
     def _ask(self, instruction: str, text: str) -> dict:
         interaction = self.client.interactions.create(

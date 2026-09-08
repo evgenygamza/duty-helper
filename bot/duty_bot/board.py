@@ -44,9 +44,13 @@ def card_text(fields: dict) -> str:
     )
 
 
-def thread_link(fields: dict) -> str:
-    links = fields.get('thread', {}).get('link') or []
+def link_of(fields: dict, key: str) -> str:
+    links = fields.get(key, {}).get('link') or []
     return links[0].get('originalUrl', '') if links else ''
+
+
+def thread_link(fields: dict) -> str:
+    return link_of(fields, 'thread')
 
 
 def _rich_text(text: str) -> list[dict]:
@@ -78,6 +82,7 @@ class Board:
                 'fields': fields,
                 'status': fields.get('status', {}).get('value'),
                 'root': root_of(thread_link(fields)),
+                'issue': link_of(fields, 'issue'),
                 'read_up_to': plain(fields.get('read_up_to', {})),
             })
         return out
@@ -112,6 +117,11 @@ class Board:
         if read_up_to:
             values['read_up_to'] = read_up_to
         self.write(item_id, values)
+
+    def set_status(self, item_id: str, status: str) -> None:
+        """Moving the card is how the bot says whose move it is now."""
+        self.write(item_id, {'status': {'select': [status]}})
+        self.touch_status_since(item_id)
 
     def touch_status_since(self, item_id: str) -> None:
         self.write(item_id, {'status_since': f'{dt.datetime.now().timestamp():.6f}'})

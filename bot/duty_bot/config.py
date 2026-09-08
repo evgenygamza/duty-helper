@@ -23,6 +23,7 @@ class Config:
     sweep_seconds: int
     user_token: str
     search_filter: str
+    commit_for_real: bool
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -38,6 +39,11 @@ class Config:
             # Slack's own search modifiers, appended verbatim. Empty by default:
             # an alert with the group tagged may well be a call worth carding.
             search_filter=os.environ.get('DUTY_SEARCH_FILTER', '').strip(),
+            # Off by default: a letter to the vendor and a ticket in Jira leave
+            # the machine only when someone deliberately turned this on, never
+            # because a flag was forgotten.
+            commit_for_real=os.environ.get('DUTY_SEND_OUTWARD', '').strip().lower()
+            in ('1', 'true', 'yes'),
         )
         missing = [n for n, v in (
             ('SLACK_BOT_TOKEN', cfg.bot_token),

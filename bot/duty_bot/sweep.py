@@ -21,6 +21,7 @@ from .board import OPEN_STATUSES, plain, thread_link
 from .cards import open_card, refresh_card
 from .feedback import apply, theirs
 from .links import parse
+from .vendor import replied, uuid_of
 
 log = logging.getLogger('duty')
 
@@ -65,6 +66,8 @@ class Sweep:
         self.handle = handle
         self.running = threading.Lock()
         self.cooldown: dict[str, float] = {}
+        # What the last pass already complained about, so it is not said twice.
+        self.reported: set[str] = set()
         self.searched = 0.0
         # Both identities put marks on messages, so both have to be recognised.
         self.ids = {bot.auth_test()['user_id']}
@@ -91,6 +94,7 @@ class Sweep:
             for name, check in (('отметок', self._marks),
                                 ('новых', self._missing_cards),
                                 ('освежил', self._refresh),
+                                ('ответил вендор', self._vendor),
                                 ('висит', self._overdue)):
                 try:
                     report[name] = check(cards, threads)
@@ -258,6 +262,25 @@ class Sweep:
         waiting = len(behind) - len(ready)
         return f'{done} из {len(behind)}' + (f', {waiting} в выдержке' if waiting else '')
 
+    def _vendor(self, cards: list[dict], threads: dict) -> int:
+        """A card waiting on FactSet, whose issue FactSet has since answered,
+        is our move again. The portal is asked only when something waits."""
+        waiting = [c for c in cards
+                   if c['status'] == 'waiting_factset' and uuid_of(c['issue'])]
+        if not waiting:
+            return 0
+        fresh = replied()
+        moved = 0
+        for card in waiting:
+            row = fresh.get(uuid_of(card['issue']))
+            if not row:
+                continue
+            self.board.set_status(card['id'], 'in_progress')
+            log.info('card %s: FactSet answered %s on %s, back to us',
+                     card['id'], row['issue_id'], row['replied_on'][:16])
+            moved += 1
+        return moved
+
     def _overdue(self, cards: list[dict], threads: dict) -> int:
         now = time.time()
         stale = 0
@@ -272,7 +295,15 @@ class Sweep:
     # --- plumbing -------------------------------------------------------
 
     def _report_failures(self, failures: list[str]) -> None:
-        text = 'Сверка прошла с ошибками:\n' + '\n'.join(f'• {f}' for f in failures)
+        """Says what broke, once. A failure that stays — an expired portal
+        session, a thread nobody can read any more — repeats every pass, and at
+        a short interval that turns the feed into a wall of the same line. The
+        same text is said again only after a pass where it did not happen."""
+        fresh = [f for f in failures if f not in self.reported]
+        self.reported = set(failures)
+        if not fresh:
+            return
+        text = 'Сверка прошла с ошибками:\n' + '\n'.join(f'• {f}' for f in fresh)
         try:
             self.bot.chat_postMessage(channel=self.cfg.feed_channel, text=text)
         except Exception:

@@ -16,6 +16,7 @@ from slack_sdk import WebClient
 
 from .board import Board
 from .cards import handle
+from .comments import register as register_comments
 from .config import Config
 from .feedback import register as register_feedback
 from .summarize import Summarizer
@@ -49,6 +50,10 @@ def build(cfg: Config) -> App:
     sweep = Sweep(cfg, app.client, user, board, summarizer,
                   watched_channels(app.client, cfg, team), team,
                   group_handle(app.client, cfg, team))
+    # The comment listener borrows the sweep's choice of token: a card's thread
+    # may well live in a channel the bot is not in.
+    register_comments(app, board, summarizer, app.client.auth_test()['user_id'],
+                      sweep.by, cfg.commit_for_real)
     sweep.every(cfg.sweep_seconds)
     return app
 
