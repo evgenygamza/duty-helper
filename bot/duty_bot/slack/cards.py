@@ -5,12 +5,31 @@ everything else. A call found either way becomes the same card.
 """
 
 import logging
+from pathlib import Path
 
+from ..core.locks import hold
+from ..core.summarize import Summarizer, render
 from .board import Board, card_text
-from .locks import hold
-from .summarize import Summarizer
 
 log = logging.getLogger('duty')
+
+# The prompts about a card belong to the house that owns cards.
+_PROMPTS = Path(__file__).parent / 'prompts'
+SUMMARY_PROMPT = (_PROMPTS / 'summary.md').read_text(encoding='utf-8')
+REPEAT_PROMPT = (_PROMPTS / 'repeat.md').read_text(encoding='utf-8')
+
+
+def of_thread(summarizer: Summarizer, messages: list[dict]) -> dict:
+    return summarizer.ask(SUMMARY_PROMPT, render(messages))
+
+
+def of_repeat(summarizer: Summarizer, messages: list[dict], card: str) -> dict:
+    """Same thread, called again: refresh the card or split off a subtask."""
+    answer = summarizer.ask(
+        REPEAT_PROMPT, f'Карточка сейчас:\n{card}\n\nТред целиком:\n{render(messages)}')
+    if answer.get('action') not in ('refresh', 'subtask', 'keep'):
+        answer['action'] = 'refresh'
+    return answer
 
 
 def read_thread(client, channel: str, root_ts: str) -> tuple[list[dict], str]:
@@ -33,7 +52,7 @@ def open_card(client, board: Board, summarizer: Summarizer, channel: str,
             return None
         link = client.chat_getPermalink(channel=channel, message_ts=call_ts)['permalink']
         thread, last = read_thread(client, channel, root_ts)
-        summary = summarizer.of_thread(thread)
+        summary = of_thread(summarizer, thread)
         item = board.add_item(summary, channel, user, link, read_up_to=last)
         log.info('item %s created from thread %s/%s of %d messages',
                  item, channel, root_ts, len(thread))
@@ -49,7 +68,7 @@ def refresh_card(client, board: Board, summarizer: Summarizer, card: dict,
         if not mine:
             return 'skipped'
         thread, last = read_thread(client, channel, root_ts)
-        answer = summarizer.of_repeat(thread, card_text(card['fields']))
+        answer = of_repeat(summarizer, thread, card_text(card['fields']))
         action = answer.get('action')
         if action == 'keep':
             board.write(card['id'], {'read_up_to': last})

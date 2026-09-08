@@ -1,7 +1,7 @@
 """Letters to FactSet: drafted in the comment thread, sent through the portal.
 
-The draft is not kept anywhere but that thread — see `draft.py`. Sending drives
-the portal through `letters/reply.py`, the copy of the skill's script, as a
+The draft is not kept anywhere but that thread — see `core/draft.py`. Sending
+drives the portal through `portal/reply.py`, the copy of the skill's script, as a
 subprocess with its own dependencies.
 """
 
@@ -11,11 +11,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from . import draft
+from ..core import draft
 
 log = logging.getLogger('duty')
 
-REPLY = Path(__file__).parent.parent / 'letters' / 'reply.py'
+REPLY = Path(__file__).parent / 'portal' / 'reply.py'
+PROMPT = (Path(__file__).parent / 'prompts' / 'letter_draft.md').read_text(encoding='utf-8')
 
 # The browser, the portal and the upload. Slow by nature, so it gets its own
 # ceiling rather than the sweep's.

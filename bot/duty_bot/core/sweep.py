@@ -17,11 +17,11 @@ import logging
 import threading
 import time
 
-from .board import OPEN_STATUSES, plain, thread_link
-from .cards import open_card, refresh_card
-from .feedback import apply, theirs
-from .links import parse
-from .vendor import replied, uuid_of
+from ..fs_issue_tracker.tracker import replied, uuid_of
+from ..slack.board import OPEN_STATUSES, plain, thread_link
+from ..slack.cards import open_card, refresh_card
+from ..slack.feedback import apply, theirs
+from ..slack.links import parse
 
 log = logging.getLogger('duty')
 

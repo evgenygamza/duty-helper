@@ -4,8 +4,8 @@ import logging
 
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from duty_bot.collect import build
-from duty_bot.config import Config
+from duty_bot.core.collect import build
+from duty_bot.core.config import Config
 
 
 def main() -> None:

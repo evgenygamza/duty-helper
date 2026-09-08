@@ -10,8 +10,29 @@ The draft lives only in that message. Correcting it edits the message, so a thre
 holds exactly one, and whatever is committed is the text that was on the screen.
 """
 
+from .summarize import render
+
 MISSING = 'Чего не хватает: '
 TAIL = 'Напишите «'
+
+
+def about(card: str, messages: list[dict], notes: str = '') -> str:
+    """What the model is told before it writes: the card, the thread it came
+    from, and what the duty person said in the comments — the comments are the
+    fresher word."""
+    return '\n\n'.join(part for part in (
+        f'Карточка:\n{card}',
+        f'Тред целиком:\n{render(messages)}',
+        f'Дежурный в комментариях к карточке:\n{notes}' if notes else '',
+    ) if part)
+
+
+def correction(subject: str, body: str, said: str) -> str:
+    """The same draft handed back with one correction to carry out."""
+    return '\n\n'.join((
+        f'Черновик сейчас:\nТема: {subject}\n\n{body}',
+        f'Поправка от дежурного:\n{said}',
+    ))
 
 
 def message(mark: str, subject: str, body: str, missing: str, commit: str) -> str:

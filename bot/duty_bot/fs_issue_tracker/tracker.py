@@ -8,7 +8,7 @@ The status is the whole state here. Once the card has moved, it is no longer
 waiting, so the same reply is never reported twice and no column has to remember
 what was already seen.
 
-The portal is read by `letters/issues.py`, a copy of the factset-letters script,
+The portal is read by `portal/issues.py`, a copy of the factset-letters script,
 run as a subprocess: it carries its own dependencies through uv, so the bot's
 environment stays as it is.
 """
@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 log = logging.getLogger('duty')
 
-SCRIPT = Path(__file__).parent.parent / 'letters' / 'issues.py'
+SCRIPT = Path(__file__).parent / 'portal' / 'issues.py'
 
 # How far back a vendor reply counts. A card waiting longer than that has a
 # problem the reminders should raise, not this check.

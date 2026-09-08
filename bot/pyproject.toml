@@ -12,6 +12,9 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["duty_bot*"]
 
+[tool.setuptools.package-data]
+"*" = ["prompts/*.md"]
+
 [tool.ruff]
 line-length = 100
 

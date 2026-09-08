@@ -15,9 +15,13 @@ import json
 import logging
 import tempfile
 
-from . import draft
+from pathlib import Path
+
+from ..core import draft
 
 log = logging.getLogger('duty')
+
+PROMPT = (Path(__file__).parent / 'prompts' / 'incident_draft.md').read_text(encoding='utf-8')
 
 MARK = 'Черновик инцидента ITSM'
 COMMIT = 'заводи'
