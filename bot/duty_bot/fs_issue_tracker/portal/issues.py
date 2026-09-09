@@ -172,7 +172,9 @@ def cmd_updates(args: argparse.Namespace) -> int:
     """
     cutoff = (datetime.now() - timedelta(days=args.days)).isoformat()
     out = []
-    for issue in load_issues(state='open', scope='mine'):
+    # Closed ones count too: FactSet often answers and closes in one move, and
+    # an issue that left the open views would leave its card waiting forever.
+    for issue in load_issues(state='all', scope='mine'):
         if (issue.get('LastFactSetCommentOn') or '') < cutoff:
             continue
         comments = sorted_comments(get_issue(issue['Id']))
@@ -183,6 +185,7 @@ def cmd_updates(args: argparse.Namespace) -> int:
             'issue_id': issue['IssueId'],
             'title': issue.get('Title', ''),
             'status': issue.get('Status', ''),
+            'state': issue.get('state', ''),
             'replied_on': comments[-1]['CreatedDate'],
             'author': comments[-1]['Author'],
         })
