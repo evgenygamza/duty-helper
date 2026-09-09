@@ -83,6 +83,7 @@ class Board:
                 'status': fields.get('status', {}).get('value'),
                 'root': root_of(thread_link(fields)),
                 'issue': link_of(fields, 'issue'),
+                'incident': link_of(fields, 'incident'),
                 'read_up_to': plain(fields.get('read_up_to', {})),
             })
         return out

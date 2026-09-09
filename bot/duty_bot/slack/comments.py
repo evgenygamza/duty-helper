@@ -66,11 +66,22 @@ class Comments:
     def card(self, card_id: str) -> dict | None:
         return next((c for c in self.board.cards() if c['id'] == card_id), None)
 
+    def where(self, card: dict) -> tuple[str, str]:
+        """Channel and thread root the card was made from."""
+        channel, _, root = parse(card['fields']['thread']['link'][0]['originalUrl'])
+        return channel, root
+
     def thread_of(self, card: dict) -> list[dict]:
         """The Slack thread the card was made from."""
-        channel, _, root = parse(card['fields']['thread']['link'][0]['originalUrl'])
+        channel, root = self.where(card)
         return self.pick(channel).conversations_replies(
             channel=channel, ts=root, limit=200)['messages']
+
+    def tell(self, card: dict, text: str) -> None:
+        """A word to the person who asked, in the thread where they asked."""
+        channel, root = self.where(card)
+        self.pick(channel).chat_postMessage(
+            channel=channel, thread_ts=root, text=text, unfurl_links=False)
 
     def here(self, thread_ts: str) -> list[dict]:
         return self.client.conversations_replies(

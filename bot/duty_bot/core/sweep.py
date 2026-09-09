@@ -95,6 +95,7 @@ class Sweep:
                                 ('новых', self._missing_cards),
                                 ('освежил', self._refresh),
                                 ('ответил вендор', self._vendor),
+                                ('сказал про инцидент', self._incident),
                                 ('висит', self._overdue)):
                 try:
                     report[name] = check(cards, threads)
@@ -280,6 +281,26 @@ class Sweep:
                      card['id'], row['issue_id'], row['replied_on'][:16])
             moved += 1
         return moved
+
+    def _incident(self, cards: list[dict], threads: dict) -> int:
+        """An incident on a card is news for the person who asked, and they sit
+        in the thread. Said once: the thread itself remembers, because the
+        message names the incident and can be found there again."""
+        told = 0
+        for card in cards:
+            thread = threads.get(card['id'])
+            link = card['incident']
+            if not thread or not link:
+                continue
+            if any(link in (m.get('text') or '') and m.get('user') in self.ids
+                   for m in thread['messages']):
+                continue
+            self.by(thread['channel']).chat_postMessage(
+                channel=thread['channel'], thread_ts=thread['root'],
+                text=f'По этому обращению заведён инцидент: {link}', unfurl_links=False)
+            log.info('card %s: told the thread about incident %s', card['id'], link)
+            told += 1
+        return told
 
     def _overdue(self, cards: list[dict], threads: dict) -> int:
         now = time.time()
