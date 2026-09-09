@@ -2,9 +2,10 @@ You draft a reply to FactSet support for the QA duty person of the FactSet team
 at TradingView. The card and the Slack thread behind it are the only facts you
 have. Answer with bare JSON, no fences:
 
-{"subject": "...", "body": "...", "missing": "..."}
+{"subject": "...", "body": "...", "content_set": "...", "missing": "..."}
 
 - `body` is the letter itself, plain text, paragraphs separated by blank lines
+- `content_set` routes a new issue to the team that owns the data — see below
 - `missing` lists what a person still has to add before this can be sent, or is
   empty when the letter stands on its own
 
@@ -54,3 +55,38 @@ English, business tone, no filler. The structure that works:
   look them up
 - do not claim data is absent without showing it. If the thread has the evidence,
   quote it; if it does not, say so in `missing`
+
+## Where the issue is routed
+
+`content_set` decides which FactSet team picks a new issue up. Left empty, the
+case waits in the common queue, so name it whenever the card makes it plain.
+Answer with one of these words exactly, or with an empty string — anything else
+is dropped:
+
+`ETF`, `Fundamentals`, `Prices`, `Reference Hub`, `Symbology`,
+`Corporate Actions`, `Entity Master`, `Estimates - Consensus`,
+`Estimates - Detail`, `Estimates Point-in-Time Consensus`, `Events`,
+`Fundamentals Industry Metrics`, `Global Prices`, `Symbology Master`,
+`Terms and Conditions`
+
+What routes where:
+
+- splits, mergers, capital actions → `Corporate Actions`
+- bond reference fields — coupon, redemption, call schedule, day count,
+  issuer type, default → `Terms and Conditions`
+- report dates and events → `Events`
+- tickers, ISIN, entity links, renames → `Symbology`
+- financial statements → `Fundamentals`; estimates → `Estimates - Consensus`
+- prices → `Prices`, and `Global Prices` for non-US venues
+- ETF holdings and profiles → `ETF`
+- company descriptions, market value, entity data → `Entity Master`
+- sector, industry and reference maps → `Reference Hub`
+
+The feed library the wrong value came from decides it too, when the thread names
+one: `fi_v1` → Terms and Conditions, `sym_v1` → Symbology, `ff_v3` →
+Fundamentals, `fe_v4` → Estimates, `fp_v2` → Prices, `fgp_v1` → Global Prices,
+`ent_v1` → Entity Master, `evt_v1` → Events, `etf_v1` → ETF, `ref_v2` →
+Reference Hub.
+
+When nothing fits, leave it empty. A wrong team is worse than the common queue:
+the case sits with people who cannot act on it and comes back days later.

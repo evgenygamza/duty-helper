@@ -14,6 +14,8 @@ from .summarize import render
 
 MISSING = 'Чего не хватает: '
 TAIL = 'Напишите «'
+SUBJECT = 'Тема: '
+ROUTE = 'Куда: '
 
 
 def about(card: str, messages: list[dict], notes: str = '') -> str:
@@ -35,8 +37,12 @@ def correction(subject: str, body: str, said: str) -> str:
     ))
 
 
-def message(mark: str, subject: str, body: str, missing: str, commit: str) -> str:
-    lines = [f'*{mark}*', f'Тема: {subject}', '', body]
+def message(mark: str, subject: str, body: str, missing: str, commit: str,
+            route: str = '') -> str:
+    lines = [f'*{mark}*', SUBJECT + subject]
+    if route:
+        lines.append(ROUTE + route)
+    lines += ['', body]
     if missing:
         lines += ['', MISSING + missing]
     lines += ['', f'{TAIL}{commit}», и уйдёт как есть. Поправка — «поправь ...».']
@@ -44,18 +50,28 @@ def message(mark: str, subject: str, body: str, missing: str, commit: str) -> st
 
 
 def subject_of(text: str) -> str:
+    return _header(text, SUBJECT)
+
+
+def route_of(text: str) -> str:
+    return _header(text, ROUTE)
+
+
+def _header(text: str, name: str) -> str:
     for line in text.splitlines():
-        if line.startswith('Тема: '):
-            return line[len('Тема: '):].strip()
+        if line.startswith(name):
+            return line[len(name):].strip()
     return ''
 
 
 def body_of(text: str) -> str:
     """Everything under the subject line and above what the bot says for itself."""
     lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.startswith('Тема: ')), None)
+    start = next((i for i, line in enumerate(lines) if line.startswith(SUBJECT)), None)
     if start is None:
         return ''
+    while start + 1 < len(lines) and lines[start + 1].startswith(ROUTE):
+        start += 1
     end = next((i for i, line in enumerate(lines)
                 if line.startswith(MISSING) or line.startswith(TAIL)), len(lines))
     return '\n'.join(lines[start + 1:end]).strip()

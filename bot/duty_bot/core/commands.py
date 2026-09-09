@@ -78,15 +78,17 @@ class Commands:
             kind = kind_of(text) if self.comments.mine(message) else ''
             if kind:
                 return {'ts': message['ts'], 'kind': kind,
-                        'subject': draft.subject_of(text), 'body': draft.body_of(text)}
+                        'subject': draft.subject_of(text), 'body': draft.body_of(text),
+                        'route': draft.route_of(text)}
         return None
 
     def show(self, kind: str, answer: dict, thread_ts: str, edit: str = '') -> None:
         """Puts the draft in the thread, or over the one already standing there."""
         module = KINDS[kind]['module']
-        text = module.draft_message(
-            answer.get('subject') or answer.get('summary', ''),
-            answer.get('body', ''), answer.get('missing', ''))
+        head = [answer.get('subject') or answer.get('summary', ''),
+                answer.get('body', ''), answer.get('missing', '')]
+        text = (module.draft_message(*head, answer.get('content_set', ''))
+                if kind == 'letter' else module.draft_message(*head))
         if edit:
             self.comments.rewrite(edit, text)
         else:
@@ -151,7 +153,8 @@ class Commands:
         if uuid:
             return ('У карточки уже есть issue. Ответить в него — «отправляй», '
                     'а для нового обращения сначала уберите ссылку')
-        said, url = letter.file_new(standing['subject'], standing['body'], self.for_real)
+        said, url = letter.file_new(standing['subject'], standing['body'],
+                                    self.for_real, standing.get('route', ''))
         if url and card:
             # The link closes the loop: without it nothing notices the vendor's answer.
             self.board.write(card['id'], {'issue': {'link': [

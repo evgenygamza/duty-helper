@@ -25,6 +25,18 @@ PROMPT = (Path(__file__).parent / 'prompts' / 'letter_draft.md').read_text(encod
 TIMEOUT = 300
 
 MARK = 'Черновик письма в FactSet'
+
+# Every value the form offers for Content Set — the field that decides which
+# FactSet team picks the issue up. The model chooses from these words and the
+# code refuses anything else: a value the form does not have would either fail
+# the filing or, worse, route the case to nobody.
+CONTENT_SETS = (
+    'ETF', 'Fundamentals', 'Prices', 'Reference Hub', 'Symbology',
+    'Corporate Actions', 'Entity Master', 'Estimates - Consensus',
+    'Estimates - Detail', 'Estimates Point-in-Time Consensus', 'Events',
+    'Fundamentals Industry Metrics', 'Global Prices', 'Symbology Master',
+    'Terms and Conditions',
+)
 COMMIT = 'отправляй'
 
 
@@ -38,8 +50,14 @@ def as_html(text: str) -> str:
         for part in text.split('\n\n') if part.strip())
 
 
-def draft_message(subject: str, body: str, missing: str) -> str:
-    return draft.message(MARK, subject, body, missing, COMMIT)
+def route(said: str) -> str:
+    """The Content Set the model named, if the form really has it."""
+    said = (said or '').strip()
+    return next((value for value in CONTENT_SETS if value.lower() == said.lower()), '')
+
+
+def draft_message(subject: str, body: str, missing: str, said_route: str = '') -> str:
+    return draft.message(MARK, subject, body, missing, COMMIT, route(said_route))
 
 
 def _to_file(text: str) -> str:
@@ -65,17 +83,21 @@ def send(uuid: str, text: str, for_real: bool) -> str:
     return f'Отправил: {said.strip().splitlines()[-1]}'
 
 
-def file_new(subject: str, body: str, for_real: bool) -> tuple[str, str]:
+def file_new(subject: str, body: str, for_real: bool,
+             content_set: str = '') -> tuple[str, str]:
     """Starts a new correspondence. Returns what to say and the issue's address.
 
-    Content Set is left unset for now: it decides which FactSet team picks the
-    issue up, and its real values have not been read off the form yet, so a
-    guessed one would route the case worse than none at all."""
+    Content Set decides which FactSet team picks the issue up; without it the
+    case waits in the common queue. The value comes from the draft, where the
+    model put it by the rules in the prompt, and only if the form has it."""
     path = _to_file(body)
     if not for_real:
         log.info('issue not filed, DUTY_SEND_OUTWARD is off: %s', path)
         return f'Заглушка, обращение не заведено. Что ушло бы: {path}', ''
-    said = ask(CREATE, ['--subject', subject, '--body-file', path], TIMEOUT)
+    args = ['--subject', subject, '--body-file', path]
+    if route(content_set):
+        args += ['--content-set', route(content_set)]
+    said = ask(CREATE, args, TIMEOUT)
     filed = next((line[len('Filed: '):].strip() for line in reversed(said.splitlines())
                   if line.startswith('Filed: ')), '')
     if not filed:
