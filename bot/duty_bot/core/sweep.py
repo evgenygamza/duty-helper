@@ -5,7 +5,7 @@ be down, and channels without the bot send nothing at all. Anything built on an
 event drifts sooner or later, so the sweep walks the board and fixes what it
 finds — regardless of what was missed.
 
-Four checks, each on its own. A half-failed pass that says nothing is worse than
+Every check on its own. A half-failed pass that says nothing is worse than
 no pass at all, so a check that breaks is reported and the others carry on.
 
 The truth is always Slack's: statuses, marks and threads are read afresh every
@@ -18,7 +18,7 @@ import threading
 import time
 
 from ..fs_issue_tracker.tracker import replied, uuid_of
-from ..slack.board import OPEN_STATUSES, plain, thread_link
+from ..slack.board import OPEN_STATUSES, thread_link
 from ..slack.cards import open_card, refresh_card
 from ..slack.feedback import apply, theirs
 from ..slack.links import parse
@@ -96,6 +96,7 @@ class Sweep:
                                 ('освежил', self._refresh),
                                 ('ответил вендор', self._vendor),
                                 ('сказал про инцидент', self._incident),
+                                ('часы', self._clock),
                                 ('висит', self._overdue)):
                 try:
                     report[name] = check(cards, threads)
@@ -302,14 +303,31 @@ class Sweep:
             told += 1
         return told
 
+    def _clock(self, cards: list[dict], threads: dict) -> int:
+        """«В статусе с» against the status the card actually sits in.
+
+        A status moved by hand is reported by nobody: Lists send no events at
+        all. The cell carries the status it was stamped for, so a disagreement
+        is the whole signal — and it also migrates cards stamped by the old
+        format, which held a bare ts and now reads as unknown.
+        """
+        stamped = 0
+        for card in cards:
+            if not card['status'] or card['since_status'] == card['status']:
+                continue
+            self.board.touch_status_since(card['id'], card['status'])
+            card['since_status'], card['since'] = card['status'], time.time()
+            log.info('card %s: status %s since now', card['id'], card['status'])
+            stamped += 1
+        return stamped
+
     def _overdue(self, cards: list[dict], threads: dict) -> int:
         now = time.time()
         stale = 0
         for card in cards:
             if card['status'] not in OPEN_STATUSES:
                 continue
-            since = plain(card['fields'].get('status_since', {}))
-            if since and now - float(since) > STALE_AFTER:
+            if card['since'] and now - card['since'] > STALE_AFTER:
                 stale += 1
         return stale
 

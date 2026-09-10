@@ -8,6 +8,10 @@ Two columns are the bot's own bookkeeping and no human should touch them:
 «Прочитано» holds the ts of the last thread message folded into the summary,
 «В статусе с» the moment the card entered its current status. The list's own
 updated_timestamp cannot serve either: it moves on any edit, a human's included.
+
+«В статусе с» keeps `status@ts`, not the ts alone. Nothing reports a status a
+human moved — Lists send no events — so the only signal left is the cell
+disagreeing with the status the card sits in, and a bare ts cannot disagree.
 """
 
 import datetime as dt
@@ -35,6 +39,21 @@ def plain(field: dict) -> str:
         for element in block.get('elements', [])
         for run in element.get('elements', [])
     )
+
+
+def _stamp(status: str) -> str:
+    return f'{status}@{dt.datetime.now().timestamp():.6f}'
+
+
+def since_of(field: dict) -> tuple[str, float | None]:
+    """«В статусе с» apart: the status it was stamped for, and when. Anything
+    unparsable — an empty cell, a bare ts from the old format, a human's
+    typing — reads as unknown, and the sweep stamps it afresh."""
+    status, _, ts = plain(field).partition('@')
+    try:
+        return status, float(ts)
+    except ValueError:
+        return '', None
 
 
 def card_text(fields: dict) -> str:
@@ -77,6 +96,7 @@ class Board:
         out = []
         for item in resp.get('items', []):
             fields = {f['key']: f for f in item.get('fields', [])}
+            since_status, since = since_of(fields.get('status_since', {}))
             out.append({
                 'id': item['id'],
                 'fields': fields,
@@ -85,6 +105,8 @@ class Board:
                 'issue': link_of(fields, 'issue'),
                 'incident': link_of(fields, 'incident'),
                 'read_up_to': plain(fields.get('read_up_to', {})),
+                'since_status': since_status,
+                'since': since,
             })
         return out
 
@@ -120,12 +142,13 @@ class Board:
         self.write(item_id, values)
 
     def set_status(self, item_id: str, status: str) -> None:
-        """Moving the card is how the bot says whose move it is now."""
-        self.write(item_id, {'status': {'select': [status]}})
-        self.touch_status_since(item_id)
+        """Moving the card is how the bot says whose move it is now. Status and
+        its moment go in one call: two writes could leave them disagreeing."""
+        self.write(item_id, {'status': {'select': [status]},
+                             'status_since': _stamp(status)})
 
-    def touch_status_since(self, item_id: str) -> None:
-        self.write(item_id, {'status_since': f'{dt.datetime.now().timestamp():.6f}'})
+    def touch_status_since(self, item_id: str, status: str) -> None:
+        self.write(item_id, {'status_since': _stamp(status)})
 
     def _initial(self, summary: dict) -> list[dict]:
         fields = [
@@ -145,7 +168,6 @@ class Board:
 
     def add_item(self, summary: dict, channel: str, user: str, link: str,
                  read_up_to: str = '') -> str:
-        now = f'{dt.datetime.now().timestamp():.6f}'
         fields = self._initial(summary)
         fields += [
             # A new call is expected to be picked up the same day. Slack renders
@@ -154,7 +176,8 @@ class Board:
             {'column_id': self.columns['channel'], 'channel': [channel]},
             {'column_id': self.columns['thread'],
              'link': [{'original_url': link, 'display_name': 'тред'}]},
-            {'column_id': self.columns['status_since'], 'rich_text': _rich_text(now)},
+            {'column_id': self.columns['status_since'],
+             'rich_text': _rich_text(_stamp('new'))},
             {'column_id': self.columns['read_up_to'], 'rich_text': _rich_text(read_up_to)},
         ]
         if user:
