@@ -47,14 +47,15 @@ def build(cfg: Config) -> App:
     user = WebClient(token=cfg.user_token) if cfg.user_token else None
     if user is None:
         log.warning('no user token: the sweep sees only channels the bot is in')
+    duty = Duty(cfg, app.client, user, team)
     sweep = Sweep(cfg, app.client, user, board, summarizer,
                   watched_channels(app.client, cfg, team), team,
-                  group_handle(app.client, cfg, team))
+                  group_handle(app.client, cfg, team), duty)
     # The comment listener borrows the sweep's choice of token: a card's thread
     # may well live in a channel the bot is not in.
     comments = Comments(app.client, board, app.client.auth_test()['user_id'], sweep.by)
     register_commands(app, comments, board, summarizer, cfg.commit_for_real)
-    register_duty(app, Duty(cfg, app.client, user, team))
+    register_duty(app, duty)
     sweep.every(cfg.sweep_seconds)
     return app
 

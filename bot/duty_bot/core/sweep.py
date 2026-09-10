@@ -22,6 +22,7 @@ from ..slack.board import OPEN_STATUSES, thread_link
 from ..slack.cards import open_card, refresh_card
 from ..slack.feedback import apply, theirs
 from ..slack.links import parse
+from .remind import Reminders
 
 log = logging.getLogger('duty')
 
@@ -55,7 +56,7 @@ SEARCH_EVERY = 60
 
 class Sweep:
     def __init__(self, cfg, bot, user, board, summarizer, channels: list[str],
-                 team: str, handle: str):
+                 team: str, handle: str, duty):
         self.cfg = cfg
         self.bot = bot
         self.user = user
@@ -64,6 +65,7 @@ class Sweep:
         self.channels = set(channels)
         self.team = team
         self.handle = handle
+        self.reminders = Reminders(bot, duty)
         self.running = threading.Lock()
         self.cooldown: dict[str, float] = {}
         # What the last pass already complained about, so it is not said twice.
@@ -97,7 +99,8 @@ class Sweep:
                                 ('ответил вендор', self._vendor),
                                 ('сказал про инцидент', self._incident),
                                 ('часы', self._clock),
-                                ('висит', self._overdue)):
+                                ('висит', self._overdue),
+                                ('напомнил', self.reminders.run)):
                 try:
                     report[name] = check(cards, threads)
                 except Exception as err:
