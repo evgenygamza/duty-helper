@@ -22,6 +22,7 @@ class Config:
     list_id: str
     sweep_seconds: int
     user_token: str
+    duty_user: str
     search_filter: str
     commit_for_real: bool
 
@@ -36,6 +37,10 @@ class Config:
             sweep_seconds=int(os.environ.get('DUTY_SWEEP_SECONDS') or 300),
             # Optional: without it the sweep sees only the bot's own channels.
             user_token=_first('SLACK_USER_TOKEN', 'SLACK_SANDBOX_USER_TOKEN'),
+            # Optional: who reminders go to, whatever the duty group says. Set
+            # while the bot is being broken in, so nothing reaches the real
+            # duty person before they asked for it.
+            duty_user=os.environ.get('DUTY_USER_ID', '').strip(),
             # Slack's own search modifiers, appended verbatim. Empty by default:
             # an alert with the group tagged may well be a call worth carding.
             search_filter=os.environ.get('DUTY_SEARCH_FILTER', '').strip(),

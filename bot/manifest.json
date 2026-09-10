@@ -8,7 +8,15 @@
     "bot_user": {
       "display_name": "duty-helper",
       "always_online": false
-    }
+    },
+    "slash_commands": [
+      {
+        "command": "/duty",
+        "description": "Кто дежурит, и кого поставить",
+        "usage_hint": "[@человек]",
+        "should_escape": true
+      }
+    ]
   },
   "oauth_config": {
     "scopes": {
@@ -81,7 +89,8 @@
         "users:read.email",
         "lists:read",
         "lists:write",
-        "channels:write"
+        "channels:write",
+        "usergroups:write"
       ]
     }
   },

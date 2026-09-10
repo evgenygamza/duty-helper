@@ -19,6 +19,8 @@ from ..slack.cards import handle
 from ..slack.comments import Comments
 from .commands import register as register_commands
 from .config import Config
+from .duty import Duty
+from .duty import register as register_duty
 from .summarize import Summarizer
 from .sweep import Sweep
 
@@ -52,6 +54,7 @@ def build(cfg: Config) -> App:
     # may well live in a channel the bot is not in.
     comments = Comments(app.client, board, app.client.auth_test()['user_id'], sweep.by)
     register_commands(app, comments, board, summarizer, cfg.commit_for_real)
+    register_duty(app, Duty(cfg, app.client, user, team))
     sweep.every(cfg.sweep_seconds)
     return app
 
