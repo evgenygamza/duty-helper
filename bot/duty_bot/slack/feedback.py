@@ -1,23 +1,17 @@
-"""Board feedback: mark the call in its thread when the card moves.
+"""Board feedback: mark the call in its thread by the status of its card.
 
-Slack sends no event when a list cell changes, so a Workflow Builder workflow
-watches the status column and calls this custom step. The step brings the thread
-to the marks the current status calls for, instead of reacting to a transition:
-a missed, repeated or out-of-order call ends in the same place.
+Slack sends no event when a list cell changes, so nothing here reacts to a
+transition: the sweep reads the board, reads the thread and brings the marks to
+what the status calls for. A status the bot never saw change ends in the same
+place as one it did.
 
-The trigger must fire on *any* change of the status field. Narrowed to one value
-it only ever calls in, and a mark then never comes off.
+A workflow used to call in with the same job through a custom step, and was
+dropped 10.09 — see ROADMAP, Э4.
 """
 
-import logging
 import random
 
-from .links import parse
-
-log = logging.getLogger('duty')
-
-# What the author should see for a status, keyed by both the stored value and
-# the label — a workflow passes the label, a direct call may pass the value.
+# What the author should see for a status, keyed by the value the board stores.
 # Several marks for one status means the thread gets any one of them: the choice
 # is random once and then stays, because the message itself remembers it.
 STATUS_MARKS = {
@@ -30,14 +24,6 @@ STATUS_MARKS = {
     'done': ('white_check_mark',),
     'new': (),
 }
-STATUS_MARKS.update({
-    'В разборе': STATUS_MARKS['in_progress'],
-    'Ждём FactSet': STATUS_MARKS['waiting_factset'],
-    'Ждём автора': STATUS_MARKS['waiting_author'],
-    'Закрыто': STATUS_MARKS['done'],
-    'Новое': (),
-})
-
 # Marks the bot owns. Anything here that the status does not call for is taken
 # off, so a card moved out of «В разборе» loses its eye.
 MANAGED = {mark for marks in STATUS_MARKS.values() for mark in marks}
@@ -46,17 +32,6 @@ MANAGED = {mark for marks in STATUS_MARKS.values() for mark in marks}
 def allowed(status: str) -> tuple[str, ...]:
     """Any of these means the thread already says what the status says."""
     return STATUS_MARKS.get(status) or ()
-
-
-def ours(client, channel: str, ts: str) -> set[str]:
-    """Managed marks the bot already put there. One read beats guessing:
-    without it every call fires an add or a remove for each managed mark."""
-    resp = client.reactions_get(channel=channel, timestamp=ts)
-    me = client.auth_test()['user_id']
-    return {
-        r['name'] for r in resp.get('message', {}).get('reactions', [])
-        if r['name'] in MANAGED and me in (r.get('users') or [])
-    }
 
 
 def theirs(message: dict, ids: set[str]) -> set[str]:
@@ -92,34 +67,3 @@ def apply(client, channel: str, ts: str, status: str, have: set[str]) -> dict[st
         client.reactions_remove(channel=channel, timestamp=ts, name=stale)
         changed[stale] = 'снял'
     return changed
-
-
-def reconcile(client, channel: str, ts: str, status: str) -> dict[str, str]:
-    return apply(client, channel, ts, status, ours(client, channel, ts))
-
-
-def register(app, board) -> None:
-    @app.function('react_in_thread')
-    def react_in_thread(inputs, client, complete, fail):
-        log.info('step called with %s', inputs)
-        status = (inputs.get('status') or '').strip()
-        if status not in STATUS_MARKS:
-            log.warning('unknown status %r, thread left alone', status)
-            complete({})
-            return
-        try:
-            channel, ts, root = parse(inputs.get('thread_url') or '')
-            changed = reconcile(client, channel, ts, status)
-            card = board.find_by_root(root, only_open=False)
-            if card:
-                board.touch_status_since(card['id'])
-        except ValueError as bad_url:
-            log.error('bad thread link: %s', bad_url)
-            fail(str(bad_url))
-            return
-        except Exception as err:
-            log.exception('could not mark the thread')
-            fail(str(err))
-            return
-        log.info('%s/%s for status %r: %s', channel, ts, status, changed or 'уже как надо')
-        complete({})

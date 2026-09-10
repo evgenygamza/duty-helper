@@ -17,7 +17,6 @@ from slack_sdk import WebClient
 from ..slack.board import Board
 from ..slack.cards import handle
 from ..slack.comments import Comments
-from ..slack.feedback import register as register_feedback
 from .commands import register as register_commands
 from .config import Config
 from .summarize import Summarizer
@@ -41,8 +40,6 @@ def build(cfg: Config) -> App:
         except Exception:
             log.exception('failed to handle call %s/%s', channel, call_ts)
             report_failure(client, cfg, channel, call_ts)
-
-    register_feedback(app, board)
 
     team = workspace_of(app.client, cfg)
     user = WebClient(token=cfg.user_token) if cfg.user_token else None
