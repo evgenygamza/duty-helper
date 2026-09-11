@@ -1,7 +1,9 @@
 """Bot settings, all from the environment: `slack run` injects the Slack tokens,
 a local run reads them from ~/.config/duty-helper/sandbox.env."""
 
+import datetime as dt
 import os
+import time
 from dataclasses import dataclass
 
 
@@ -11,6 +13,19 @@ def _first(*names: str) -> str:
         if value:
             return value
     return ''
+
+
+def _since(value: str) -> float:
+    """The start line: a date (`2026-09-14`), a span back (`30d`), or nothing
+    at all — and then the bot starts its history here and now."""
+    if not value:
+        return time.time()
+    if value.endswith('d') and value[:-1].isdigit():
+        return time.time() - int(value[:-1]) * 86400
+    try:
+        return dt.datetime.fromisoformat(value).timestamp()
+    except ValueError:
+        raise SystemExit(f'DUTY_SINCE: не понимаю {value!r}, нужна дата или «30d»') from None
 
 
 @dataclass(frozen=True)
@@ -23,6 +38,8 @@ class Config:
     sweep_seconds: int
     user_token: str
     duty_user: str
+    since: float
+    dry_run: bool
     search_filter: str
     commit_for_real: bool
 
@@ -41,6 +58,15 @@ class Config:
             # while the bot is being broken in, so nothing reaches the real
             # duty person before they asked for it.
             duty_user=os.environ.get('DUTY_USER_ID', '').strip(),
+            # Where the bot's own history begins. Older calls are somebody
+            # else's business: a workspace holds weeks of them, and on a fresh
+            # board every one of them would look like a call nobody handled.
+            since=_since(os.environ.get('DUTY_SINCE', '').strip()),
+            # Look, and touch nothing. Every write the sweep would make is said
+            # in the log instead, so a first pass in a live workspace can be
+            # read by a human before it is allowed to act.
+            dry_run=os.environ.get('DUTY_DRY_RUN', '').strip().lower()
+            in ('1', 'true', 'yes'),
             # Slack's own search modifiers, appended verbatim. Empty by default:
             # an alert with the group tagged may well be a call worth carding.
             search_filter=os.environ.get('DUTY_SEARCH_FILTER', '').strip(),

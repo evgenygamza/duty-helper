@@ -8,6 +8,7 @@ The feed channel is for failures only: a duty call already pings people through
 the group mention in the original thread, so announcing it again is noise.
 """
 
+import datetime as dt
 import logging
 import re
 
@@ -47,6 +48,9 @@ def build(cfg: Config) -> App:
     user = WebClient(token=cfg.user_token) if cfg.user_token else None
     if user is None:
         log.warning('no user token: the sweep sees only channels the bot is in')
+    if cfg.dry_run:
+        log.warning('DUTY_DRY_RUN: смотрю и ничего не трогаю')
+    log.info('history starts at %s', dt.datetime.fromtimestamp(cfg.since).strftime('%d.%m %H:%M'))
     duty = Duty(cfg, app.client, user, team)
     sweep = Sweep(cfg, app.client, user, board, summarizer,
                   watched_channels(app.client, cfg, team), team,

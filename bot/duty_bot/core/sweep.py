@@ -17,10 +17,10 @@ import logging
 import threading
 import time
 
-from ..fs_issue_tracker.tracker import replied, uuid_of
+from ..fs_issue_tracker.tracker import moves, uuid_of
 from ..slack.board import OPEN_STATUSES, thread_link
 from ..slack.cards import open_card, refresh_card
-from ..slack.feedback import apply, theirs
+from ..slack.feedback import allowed, apply, theirs
 from ..slack.links import parse
 from .remind import Reminders
 
@@ -39,9 +39,10 @@ STALE_AFTER = 24 * 3600
 # quota in minutes, so a card that broke is left alone for a while.
 COOLDOWN = 600
 
-# How far back search looks. No watermark is kept: a call is matched against
+# How far back search looks: to the start line and a day over it, so a call
+# right on the edge is not lost to a clock difference. A call is matched against
 # every card on the board, so looking too far costs a longer query, not dupes.
-SEARCH_DAYS = 7
+SEARCH_SLACK = 86400
 
 # Seconds of interval per open card. A pass spends one conversations.replies
 # on each, and the limit is around fifty a minute — so the interval has to grow
@@ -65,7 +66,10 @@ class Sweep:
         self.channels = set(channels)
         self.team = team
         self.handle = handle
-        self.reminders = Reminders(bot, duty)
+        self.reminders = Reminders(bot, duty, cfg.feed_channel, cfg.dry_run)
+        # What the portal said this pass about the issues the board points at.
+        # The vendor check asks; the reminders live off the same answer.
+        self.correspondence: dict[str, dict] = {}
         self.running = threading.Lock()
         self.cooldown: dict[str, float] = {}
         # What the last pass already complained about, so it is not said twice.
@@ -100,7 +104,7 @@ class Sweep:
                                 ('сказал про инцидент', self._incident),
                                 ('часы', self._clock),
                                 ('висит', self._overdue),
-                                ('напомнил', self.reminders.run)):
+                                ('напомнил', self._remind)):
                 try:
                     report[name] = check(cards, threads)
                 except Exception as err:
@@ -148,6 +152,12 @@ class Sweep:
                 continue
             call = next((m for m in thread['messages'] if m['ts'] == thread['call_ts']), None)
             have = theirs(call, self.ids) if call else set()
+            if self.cfg.dry_run:
+                if set(allowed(card['status'])) - have or have - set(allowed(card['status'])):
+                    log.info('свёл бы отметки на %s/%s под статус %s',
+                             thread['channel'], thread['call_ts'], card['status'])
+                    fixed += 1
+                continue
             if apply(self.by(thread['channel']), thread['channel'],
                      thread['call_ts'], card['status'], have):
                 fixed += 1
@@ -166,6 +176,10 @@ class Sweep:
         for channel, call_ts, root_ts, user in self._candidates(threads):
             if self.board.find_by_root(root_ts, only_open=False, cards=cards):
                 continue
+            if self.cfg.dry_run:
+                log.info('завёл бы карточку по призыву %s/%s', channel, call_ts)
+                made += 1
+                continue
             try:
                 open_card(self.by(channel), self.board, self.summarizer,
                           channel, call_ts, root_ts, user)
@@ -177,13 +191,25 @@ class Sweep:
         return made
 
     def _candidates(self, threads: dict) -> list[tuple[str, str, str, str | None]]:
+        """Calls worth carding: fresh enough, and each thread only once.
+
+        The start line is what keeps a first pass in a live workspace from
+        carding weeks of calls that were handled long before the bot existed.
+        On the board they would all look like calls nobody answered.
+        """
         seen: set[tuple[str, str]] = set()
         found = []
+        skipped = 0
         for channel, call_ts, root_ts, user in self._from_history(threads) + self._from_search():
+            if float(call_ts) < self.cfg.since:
+                skipped += 1
+                continue
             if (channel, root_ts) in seen:
                 continue
             seen.add((channel, root_ts))
             found.append((channel, call_ts, root_ts, user))
+        if skipped:
+            log.info('%d calls are older than the start line, left alone', skipped)
         return found
 
     def _from_history(self, threads: dict) -> list[tuple]:
@@ -218,7 +244,7 @@ class Sweep:
         if now - self.searched < SEARCH_EVERY:
             return []
         self.searched = now
-        after = dt.date.today() - dt.timedelta(days=SEARCH_DAYS)
+        after = dt.date.fromtimestamp(self.cfg.since - SEARCH_SLACK)
         query = ' '.join(part for part in (
             f'@{self.handle}', f'after:{after.isoformat()}', self.cfg.search_filter,
         ) if part)
@@ -251,6 +277,10 @@ class Sweep:
             if newest > (card['read_up_to'] or '0'):
                 behind.append((newest, card, thread))
         behind.sort(key=lambda row: row[0])
+        if self.cfg.dry_run:
+            for _, card, _ in behind[:REFRESH_BUDGET]:
+                log.info('освежил бы карточку %s', card['id'])
+            return f'{min(len(behind), REFRESH_BUDGET)} из {len(behind)}'
         now = time.time()
         ready = [row for row in behind if self.cooldown.get(row[1]['id'], 0) < now]
         done = 0
@@ -268,21 +298,33 @@ class Sweep:
         return f'{done} из {len(behind)}' + (f', {waiting} в выдержке' if waiting else '')
 
     def _vendor(self, cards: list[dict], threads: dict) -> int:
-        """A card waiting on FactSet, whose issue FactSet has since answered,
-        is our move again. The portal is asked only when something waits."""
+        """A card waiting on FactSet, whose issue FactSet has since answered, is
+        our move again. The portal is asked about those issues by name and only
+        when something waits — no window, so a reply that arrived while the bot
+        was down is still news.
+
+        The answer is kept for the reminders: the other half of it is «we wrote
+        and nobody answered», and the portal is too slow to ask twice.
+        """
         waiting = [c for c in cards
                    if c['status'] == 'waiting_factset' and uuid_of(c['issue'])]
+        self.correspondence = {}
         if not waiting:
             return 0
-        fresh = replied()
+        self.correspondence = moves([uuid_of(c['issue']) for c in waiting])
         moved = 0
         for card in waiting:
-            row = fresh.get(uuid_of(card['issue']))
-            if not row:
+            row = self.correspondence.get(uuid_of(card['issue']))
+            if not row or not row['by_factset']:
+                continue
+            if self.cfg.dry_run:
+                log.info('вернул бы карточку %s в разбор: FactSet ответил %s',
+                         card['id'], row['last_on'][:16])
+                moved += 1
                 continue
             self.board.set_status(card['id'], 'in_progress')
-            log.info('card %s: FactSet answered %s on %s, back to us',
-                     card['id'], row['issue_id'], row['replied_on'][:16])
+            log.info('card %s: FactSet answered on %s, back to us',
+                     card['id'], row['last_on'][:16])
             moved += 1
         return moved
 
@@ -298,6 +340,10 @@ class Sweep:
                 continue
             if any(link in (m.get('text') or '') and m.get('user') in self.ids
                    for m in thread['messages']):
+                continue
+            if self.cfg.dry_run:
+                log.info('сказал бы в тред карточки %s про инцидент %s', card['id'], link)
+                told += 1
                 continue
             self.by(thread['channel']).chat_postMessage(
                 channel=thread['channel'], thread_ts=thread['root'],
@@ -318,6 +364,10 @@ class Sweep:
         for card in cards:
             if not card['status'] or card['since_status'] == card['status']:
                 continue
+            if self.cfg.dry_run:
+                log.info('отметил бы время у %s: статус %s', card['id'], card['status'])
+                stamped += 1
+                continue
             self.board.touch_status_since(card['id'], card['status'])
             card['since_status'], card['since'] = card['status'], time.time()
             log.info('card %s: status %s since now', card['id'], card['status'])
@@ -333,6 +383,9 @@ class Sweep:
             if card['since'] and now - card['since'] > STALE_AFTER:
                 stale += 1
         return stale
+
+    def _remind(self, cards: list[dict], threads: dict) -> int:
+        return self.reminders.run(cards, self.correspondence)
 
     # --- plumbing -------------------------------------------------------
 
