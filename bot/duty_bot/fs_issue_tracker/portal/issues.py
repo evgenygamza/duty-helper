@@ -10,6 +10,7 @@ login: after that storage_state.json, written by login.py, is enough.
     uv run --script issues.py list [--term ISIN] [--replied-within N]
                                    [--state open|closed|all] [--scope mine|all] [--unread]
     uv run --script issues.py show <uuid>
+    uv run --script issues.py moves <uuid> [<uuid> ...]
 
 The list runs from the freshest vendor reply to the oldest: `LastFactSetCommentOn`
 is the field that shows where a correspondence moved and where it hangs.
@@ -164,30 +165,30 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_updates(args: argparse.Namespace) -> int:
-    """Issues where the vendor spoke last, as JSON — the bot's own entry point.
+def cmd_moves(args: argparse.Namespace) -> int:
+    """JSON: who spoke last on the named issues, and when.
 
-    `LastFactSetCommentOn` only says when FactSet last wrote, not whether we
-    answered after that, so the last comment decides who holds the move.
+    The caller names the issues it cares about — the ones its cards point at —
+    and gets both sides, so «мы написали и ждём» is an answer too. No window:
+    a reply that came while nobody was looking is still the last word. An
+    issue with no comments yet counts as ours from the day it was opened, since
+    the description is what we said.
     """
-    cutoff = (datetime.now() - timedelta(days=args.days)).isoformat()
     out = []
-    # Closed ones count too: FactSet often answers and closes in one move, and
-    # an issue that left the open views would leave its card waiting forever.
-    for issue in load_issues(state='all', scope='mine'):
-        if (issue.get('LastFactSetCommentOn') or '') < cutoff:
-            continue
-        comments = sorted_comments(get_issue(issue['Id']))
-        if not comments or not comments[-1]['IsAuthorFactSetEmployee']:
-            continue
+    for uuid in args.uuid:
+        issue = get_issue(uuid)
+        comments = sorted_comments(issue)
+        last = comments[-1] if comments else {}
         out.append({
-            'uuid': issue['Id'],
-            'issue_id': issue['IssueId'],
+            # No IssueId here: the detail call does not carry it, only the
+            # list views do. The title and the link name the issue well enough.
+            'uuid': issue.get('Id', uuid),
             'title': issue.get('Title', ''),
             'status': issue.get('Status', ''),
-            'state': issue.get('state', ''),
-            'replied_on': comments[-1]['CreatedDate'],
-            'author': comments[-1]['Author'],
+            'last_on': last.get('CreatedDate') or issue.get('CreatedDate', ''),
+            'last_by': last.get('Author', ''),
+            'by_factset': bool(last.get('IsAuthorFactSetEmployee')),
+            'comments': len(comments),
         })
     print(json.dumps(out, ensure_ascii=False))
     return 0
@@ -231,10 +232,9 @@ def main() -> int:
                         help='mine — our own views, all — plus the company ones (titles only)')
     p_list.set_defaults(func=cmd_list)
 
-    p_updates = sub.add_parser('updates', help='JSON: issues where FactSet spoke last')
-    p_updates.add_argument('--days', type=int, default=7,
-                           help='how far back a vendor reply counts')
-    p_updates.set_defaults(func=cmd_updates)
+    p_moves = sub.add_parser('moves', help='JSON: who spoke last on the given issues')
+    p_moves.add_argument('uuid', nargs='+', help='issue identifiers')
+    p_moves.set_defaults(func=cmd_moves)
 
     p_show = sub.add_parser('show', help='one issue in full, every message')
     p_show.add_argument('uuid', help='issue identifier')

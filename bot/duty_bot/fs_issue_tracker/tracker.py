@@ -2,7 +2,13 @@
 
 A card waiting on the vendor is waiting for one thing: the next comment in its
 issue. When that comment turns out to be FactSet's, the move is ours again, and
-the card goes back into «В разборе».
+the card goes back into «В разборе». When it is ours and it has been sitting
+there for a week, that is a letter nobody answered.
+
+The question is asked of the issues the board points at, not of everything the
+tracker has moved lately. A window would lose exactly the cases worth catching:
+a reply that came while the bot was down stops being news the day the window
+passes it, and the card would wait on the vendor forever.
 
 The status is the whole state here. Once the card has moved, it is no longer
 waiting, so the same reply is never reported twice and no column has to remember
@@ -23,10 +29,6 @@ log = logging.getLogger('duty')
 
 ISSUES = PORTAL / 'issues.py'
 
-# How far back a vendor reply counts. A card waiting longer than that has a
-# problem the reminders should raise, not this check.
-DAYS = 7
-
 # The portal and a detail call per fresh issue. Slow, but it runs once a pass
 # and only when something is actually waiting.
 TIMEOUT = 180
@@ -38,9 +40,11 @@ def uuid_of(url: str) -> str:
     return parts[1] if len(parts) == 2 and parts[0] == 'issue' else ''
 
 
-def replied(days: int = DAYS) -> dict[str, dict]:
-    """Issues where FactSet spoke last, keyed by uuid."""
-    out = ask(ISSUES, ['updates', '--days', str(days)], TIMEOUT)
+def moves(uuids: list[str]) -> dict[str, dict]:
+    """Who spoke last on each of these issues, and when, keyed by uuid."""
+    if not uuids:
+        return {}
+    out = ask(ISSUES, ['moves', *uuids], TIMEOUT)
     tail = out.strip().splitlines()
     if not tail:
         raise RuntimeError('портал ничего не ответил')
