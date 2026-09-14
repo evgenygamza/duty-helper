@@ -29,6 +29,9 @@ log = logging.getLogger('duty')
 
 ISSUES = PORTAL / 'issues.py'
 
+# Где лежит обращение: из uuid собирается ссылка, по ссылке разбирается uuid.
+ISSUE_URL = 'https://issuetracker.factset.com/issue/'
+
 # The portal and a detail call per fresh issue. Slow, but it runs once a pass
 # and only when something is actually waiting.
 TIMEOUT = 180
@@ -44,7 +47,21 @@ def moves(uuids: list[str]) -> dict[str, dict]:
     """Who spoke last on each of these issues, and when, keyed by uuid."""
     if not uuids:
         return {}
-    out = ask(ISSUES, ['moves', *uuids], TIMEOUT)
+    return _ask_moves(list(uuids))
+
+
+def open_issues() -> dict[str, dict]:
+    """The same question about every open issue of ours, carded or not.
+
+    An issue nobody has carded is invisible to the board, and that is exactly
+    where «вендор спросил, а мы молчим» hides: the card either never existed or
+    was closed while the correspondence went on.
+    """
+    return _ask_moves(['--open'])
+
+
+def _ask_moves(args: list[str]) -> dict[str, dict]:
+    out = ask(ISSUES, ['moves', *args], TIMEOUT)
     tail = out.strip().splitlines()
     if not tail:
         raise RuntimeError('портал ничего не ответил')

@@ -11,6 +11,7 @@ login: after that storage_state.json, written by login.py, is enough.
                                    [--state open|closed|all] [--scope mine|all] [--unread]
     uv run --script issues.py show <uuid>
     uv run --script issues.py moves <uuid> [<uuid> ...]
+    uv run --script issues.py moves --open
 
 The list runs from the freshest vendor reply to the oldest: `LastFactSetCommentOn`
 is the field that shows where a correspondence moved and where it hangs.
@@ -173,9 +174,14 @@ def cmd_moves(args: argparse.Namespace) -> int:
     a reply that came while nobody was looking is still the last word. An
     issue with no comments yet counts as ours from the day it was opened, since
     the description is what we said.
+
+    `--open` asks about every open issue of ours instead. That costs a detail
+    call per issue, so it is for a caller with its own slow clock — but it is
+    the only way to see an issue nobody has carded at all.
     """
+    uuids = args.uuid or [it['Id'] for it in load_issues(state='open', scope='mine')]
     out = []
-    for uuid in args.uuid:
+    for uuid in uuids:
         issue = get_issue(uuid)
         comments = sorted_comments(issue)
         last = comments[-1] if comments else {}
@@ -233,7 +239,9 @@ def main() -> int:
     p_list.set_defaults(func=cmd_list)
 
     p_moves = sub.add_parser('moves', help='JSON: who spoke last on the given issues')
-    p_moves.add_argument('uuid', nargs='+', help='issue identifiers')
+    p_moves.add_argument('uuid', nargs='*', help='issue identifiers')
+    p_moves.add_argument('--open', action='store_true', dest='every',
+                         help='every open issue of ours instead of the named ones')
     p_moves.set_defaults(func=cmd_moves)
 
     p_show = sub.add_parser('show', help='one issue in full, every message')
