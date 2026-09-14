@@ -8,14 +8,13 @@ Answer with a single JSON object and nothing else — no markdown fence, no
 commentary:
 
 ```
-{"call": "...", "problem": "...", "data": "..."}
+{"call": "...", "problem": "..."}
 ```
 
 - `call` — the card title: one short sentence in Russian naming what is wrong
-- `problem` — what exactly is broken and what the requester expects from the
-  duty engineer. Two or three sentences in Russian
-- `data` — symbols, tickets, services and dates mentioned in the thread,
-  comma separated. A dash if there are none
+- `problem` — what exactly is broken, what the requester expects from the duty
+  engineer, and the facts they will need: symbols, tickets, services, dates.
+  Two or three sentences in Russian, the facts named inside them
 
 Rules:
 
@@ -26,8 +25,8 @@ Rules:
   attention; the problem is whatever the thread is about
 - describe the state as of the whole thread, not only the newest message
 - **a correction retires what it corrects.** «замените X на Y», «не X, а Y»,
-  «ошибся» — only the current value belongs in `data`; the retired one goes.
-  Mention the correction in `problem` if it matters. `data` is what the engineer
-  will go and check, so a stale symbol sends them to the wrong place
+  «ошибся» — only the current value belongs in `problem`, the retired one goes.
+  The engineer goes and checks what is written there, so a stale symbol sends
+  them to the wrong place
 - do not propose a fix and do not rate severity, a human does that
 - copy symbol, ticket and service names verbatim

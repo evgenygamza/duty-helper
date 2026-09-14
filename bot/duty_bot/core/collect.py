@@ -17,6 +17,7 @@ from slack_sdk import WebClient
 
 from ..slack.board import Board
 from ..slack.cards import handle
+from ..slack.ledger import Ledger
 from ..slack.comments import Comments
 from .commands import register as register_commands
 from .config import Config
@@ -31,7 +32,9 @@ log = logging.getLogger('duty')
 def build(cfg: Config) -> App:
     app = App(token=cfg.bot_token, logger=log)
     summarizer = Summarizer()
-    board = Board(app.client, cfg.list_id)
+    # The ledger lives in the feed channel, pinned: the bookkeeping a card used
+    # to carry in two unreadable columns.
+    board = Board(app.client, cfg.list_id, Ledger(app.client, cfg.feed_channel))
 
     @app.message(re.compile(re.escape(f'<!subteam^{cfg.duty_group}')))
     def on_call(message, client):
@@ -39,7 +42,7 @@ def build(cfg: Config) -> App:
         call_ts = message['ts']
         root_ts = message.get('thread_ts', call_ts)
         try:
-            handle(client, board, summarizer, channel, call_ts, root_ts, message.get('user'))
+            handle(client, board, summarizer, channel, call_ts, root_ts)
         except Exception:
             log.exception('failed to handle call %s/%s', channel, call_ts)
             report_failure(client, cfg, channel, call_ts)

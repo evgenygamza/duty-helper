@@ -9,7 +9,8 @@ whole rule is the pair of a status and a patience, and the card's own
 Two of them ask about the card, and one about the correspondence: a letter to
 FactSet that nobody answered for a week. That one is addressed to the channel,
 not to the duty person — the table says so, and a week-old silence is the
-team's business rather than one person's.
+team's business rather than one person's. A card with no thread behind it gets
+no message at all: it came from the tracker, and the board is where it speaks.
 
 Nothing is remembered on the bot's side. The conversation is the memory: each
 reminder carries its own wording plus a link, and «already said» is that pair
@@ -23,7 +24,7 @@ import time
 from typing import NamedTuple
 
 from ..fs_issue_tracker.tracker import uuid_of
-from ..slack.board import link_of, plain, thread_link
+from ..slack.board import PATIENCE, link_of, plain, thread_link
 
 log = logging.getLogger('duty')
 
@@ -34,17 +35,28 @@ class Signal(NamedTuple):
     line: str
 
 
-# Из таблицы просадок скилла. Строка «line» — не только текст человеку, но
-# и метка в памяти, поэтому менять её значит начать напоминать заново.
+# Из таблицы просадок скилла. Терпение по статусу берётся из `PATIENCE`, чтобы
+# доска и напоминания не разъезжались: красное на доске и сообщение в личку —
+# про один и тот же просроченный ход. Исключение — «Новое»: полчаса короче
+# суток, которыми меряется Due Date.
+# Строка «line» — не только текст человеку, но и метка в памяти, поэтому
+# менять её значит начать напоминать заново.
 SIGNALS = (
     Signal('new', 30 * 60, 'Полчаса никто не взял'),
-    Signal('in_progress', 24 * 3600, 'Сутки в разборе, ход наш'),
+    Signal('in_progress', PATIENCE['in_progress'] * 86400, 'Сутки в разборе, ход наш'),
 )
 
 # «письмо без ответа от ФС — 7 дней», из той же таблицы. Считается от нашего
 # последнего сообщения в обращении, о котором рассказал портал.
-SILENCE_AFTER = 7 * 24 * 3600
+SILENCE_AFTER = PATIENCE['waiting_factset'] * 86400
 LETTER_LINE = 'Неделю без ответа от FactSet'
+
+# «вендор спросил, а мы молчим» — не сообщение, а карточка на доске: обход
+# заводит её и ставит Due Date на следующий день после слова вендора, а Slack
+# сам красит просрочку. Порога в таблице нет, берём тот же, что у «ход наш»:
+# вопрос от FactSet — это наш ход. На ITSM-72571 его отсутствие стоило
+# шести дней.
+OURS_AFTER = PATIENCE['in_progress'] * 86400
 
 # How far back a direct message is read for what was already said. A repeated
 # reminder is worse than a late one, so this covers far more cards than a

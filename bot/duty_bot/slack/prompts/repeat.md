@@ -7,7 +7,7 @@ things happened.
 Answer with a single JSON object and nothing else:
 
 ```
-{"action": "refresh" | "subtask" | "keep", "call": "...", "problem": "...", "data": "..."}
+{"action": "refresh" | "subtask" | "keep", "call": "...", "problem": "..."}
 ```
 
 - `refresh` — the thread is still about the same problem. It grew, gained
@@ -21,7 +21,7 @@ Answer with a single JSON object and nothing else:
   alone. Slack does not record who edited a cell, so this judgement is
   the only protection a hand-written card has.
 
-The three text fields describe the refreshed card for `refresh` and the new
+The two text fields describe the refreshed card for `refresh` and the new
 child card for `subtask`. For `keep` they are ignored.
 
 Rules, in order of importance:
@@ -39,8 +39,8 @@ Rules, in order of importance:
   not new problems
 - a new symbol or ticket in the same breakage is not a new problem either
 - **a correction retires what it corrects.** «замените X на Y», «не X, а Y»,
-  «ошибся» — `data` keeps only the current value, the retired one goes, and the
-  correction itself is worth a word in `problem`. This is about facts the thread
-  states; text a person wrote into the card is still never thrown away
+  «ошибся» — `problem` keeps only the current value and the retired one goes.
+  This is about facts the thread states; text a person wrote into the card is
+  still never thrown away
 - never invent. Describe only what the thread says
 - answer in Russian, be terse

@@ -54,7 +54,7 @@ def _parse(raw: str) -> dict:
         return json.loads(text)
     except json.JSONDecodeError:
         log.warning('model returned non-JSON, using it as the call text')
-        return {'call': raw.strip(), 'data': '-'}
+        return {'call': raw.strip(), 'problem': '-'}
 
 
 def render(messages: list[dict]) -> str:

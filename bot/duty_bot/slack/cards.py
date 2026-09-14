@@ -32,6 +32,17 @@ def of_repeat(summarizer: Summarizer, messages: list[dict], card: str) -> dict:
     return answer
 
 
+def channel_name(client, channel: str) -> str:
+    """The caption of the thread link. A board with no «Канал» column says where
+    the call came from here, and a channel the bot cannot read still gets a
+    working link."""
+    try:
+        return f'#{client.conversations_info(channel=channel)["channel"]["name"]}'
+    except Exception:
+        log.warning('channel %s did not give its name', channel)
+        return 'тред'
+
+
 def read_thread(client, channel: str, root_ts: str) -> tuple[list[dict], str]:
     thread = client.conversations_replies(channel=channel, ts=root_ts, limit=200)['messages']
     last = thread[-1]['ts'] if thread else root_ts
@@ -39,7 +50,7 @@ def read_thread(client, channel: str, root_ts: str) -> tuple[list[dict], str]:
 
 
 def open_card(client, board: Board, summarizer: Summarizer, channel: str,
-              call_ts: str, root_ts: str, user: str | None) -> str | None:
+              call_ts: str, root_ts: str) -> str | None:
     """A call with no card of its own. The link points at the message the group
     was tagged in, not at the thread root: a call is often a reply deep inside
     someone else's thread, and the mark belongs on what the person wrote."""
@@ -53,7 +64,8 @@ def open_card(client, board: Board, summarizer: Summarizer, channel: str,
         link = client.chat_getPermalink(channel=channel, message_ts=call_ts)['permalink']
         thread, last = read_thread(client, channel, root_ts)
         summary = of_thread(summarizer, thread)
-        item = board.add_item(summary, channel, user, link, read_up_to=last)
+        item = board.add_item(summary, link, label=channel_name(client, channel),
+                              read_up_to=last)
         log.info('item %s created from thread %s/%s of %d messages',
                  item, channel, root_ts, len(thread))
         return item
@@ -71,11 +83,11 @@ def refresh_card(client, board: Board, summarizer: Summarizer, card: dict,
         answer = of_repeat(summarizer, thread, card_text(card['fields']))
         action = answer.get('action')
         if action == 'keep':
-            board.write(card['id'], {'read_up_to': last})
+            board.read_up_to(card['id'], last)
             log.info('card %s looks hand-written, left alone', card['id'])
         elif action == 'subtask':
             child = board.add_subtask(card['id'], answer)
-            board.write(card['id'], {'read_up_to': last})
+            board.read_up_to(card['id'], last)
             log.info('subtask %s added under %s from thread %s/%s',
                      child, card['id'], channel, root_ts)
         else:
@@ -86,9 +98,9 @@ def refresh_card(client, board: Board, summarizer: Summarizer, card: dict,
 
 
 def handle(client, board: Board, summarizer: Summarizer, channel: str,
-           call_ts: str, root_ts: str, user: str | None) -> None:
+           call_ts: str, root_ts: str) -> None:
     known = board.find_by_root(root_ts)
     if known is None:
-        open_card(client, board, summarizer, channel, call_ts, root_ts, user)
+        open_card(client, board, summarizer, channel, call_ts, root_ts)
     else:
         refresh_card(client, board, summarizer, known, channel, root_ts)

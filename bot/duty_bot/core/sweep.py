@@ -17,12 +17,12 @@ import logging
 import threading
 import time
 
-from ..fs_issue_tracker.tracker import moves, uuid_of
-from ..slack.board import OPEN_STATUSES, thread_link
+from ..fs_issue_tracker.tracker import ISSUE_URL, moves, open_issues, uuid_of
+from ..slack.board import OPEN_STATUSES, due_for, thread_link
 from ..slack.cards import open_card, refresh_card
 from ..slack.feedback import allowed, apply, theirs
 from ..slack.links import parse
-from .remind import Reminders
+from .remind import OURS_AFTER, Reminders
 
 log = logging.getLogger('duty')
 
@@ -54,6 +54,11 @@ PER_CARD = 3
 # queries a minute read as a human sitting there all day.
 SEARCH_EVERY = 60
 
+# Asking the tracker about every open issue costs a detail call per issue, so it
+# keeps a slow clock of its own: what it looks for — a vendor answer nobody
+# picked up — is measured in days, not in passes.
+ISSUES_EVERY = 1800
+
 
 class Sweep:
     def __init__(self, cfg, bot, user, board, summarizer, channels: list[str],
@@ -66,10 +71,15 @@ class Sweep:
         self.channels = set(channels)
         self.team = team
         self.handle = handle
+        self.duty = duty
         self.reminders = Reminders(bot, duty, cfg.feed_channel, cfg.dry_run)
         # What the portal said this pass about the issues the board points at.
         # The vendor check asks; the reminders live off the same answer.
         self.correspondence: dict[str, dict] = {}
+        # And the same about every open issue of ours, on the slower clock:
+        # correspondence with no card at all is invisible to the board.
+        self.tracker_open: dict[str, dict] = {}
+        self.asked = 0.0
         self.running = threading.Lock()
         self.cooldown: dict[str, float] = {}
         # What the last pass already complained about, so it is not said twice.
@@ -102,7 +112,9 @@ class Sweep:
                                 ('освежил', self._refresh),
                                 ('ответил вендор', self._vendor),
                                 ('сказал про инцидент', self._incident),
+                                ('из трекера', self._tracker_cards),
                                 ('часы', self._clock),
+                                ('назначил', self._assign),
                                 ('висит', self._overdue),
                                 ('напомнил', self._remind)):
                 try:
@@ -173,7 +185,7 @@ class Sweep:
         but lags behind by a few tens of seconds and needs a person's token.
         """
         made = 0
-        for channel, call_ts, root_ts, user in self._candidates(threads):
+        for channel, call_ts, root_ts in self._candidates(threads):
             if self.board.find_by_root(root_ts, only_open=False, cards=cards):
                 continue
             if self.cfg.dry_run:
@@ -182,7 +194,7 @@ class Sweep:
                 continue
             try:
                 open_card(self.by(channel), self.board, self.summarizer,
-                          channel, call_ts, root_ts, user)
+                          channel, call_ts, root_ts)
             except Exception:
                 log.exception('could not open a card for %s/%s', channel, call_ts)
                 continue
@@ -190,7 +202,7 @@ class Sweep:
             made += 1
         return made
 
-    def _candidates(self, threads: dict) -> list[tuple[str, str, str, str | None]]:
+    def _candidates(self, threads: dict) -> list[tuple[str, str, str]]:
         """Calls worth carding: fresh enough, and each thread only once.
 
         The start line is what keeps a first pass in a live workspace from
@@ -200,14 +212,14 @@ class Sweep:
         seen: set[tuple[str, str]] = set()
         found = []
         skipped = 0
-        for channel, call_ts, root_ts, user in self._from_history(threads) + self._from_search():
+        for channel, call_ts, root_ts in self._from_history(threads) + self._from_search():
             if float(call_ts) < self.cfg.since:
                 skipped += 1
                 continue
             if (channel, root_ts) in seen:
                 continue
             seen.add((channel, root_ts))
-            found.append((channel, call_ts, root_ts, user))
+            found.append((channel, call_ts, root_ts))
         if skipped:
             log.info('%d calls are older than the start line, left alone', skipped)
         return found
@@ -229,7 +241,7 @@ class Sweep:
                         channel=channel, ts=root_ts, limit=200)['messages']
                 for candidate in candidates:
                     if tag in (candidate.get('text') or ''):
-                        out.append((channel, candidate['ts'], root_ts, candidate.get('user')))
+                        out.append((channel, candidate['ts'], root_ts))
                         break
         return out
 
@@ -261,7 +273,7 @@ class Sweep:
                 _, call_ts, root_ts = parse(permalink)
             except ValueError:
                 continue
-            out.append((channel, call_ts, root_ts, match.get('user')))
+            out.append((channel, call_ts, root_ts))
         return out
 
     def _refresh(self, cards: list[dict], threads: dict) -> str:
@@ -306,9 +318,14 @@ class Sweep:
         The answer is kept for the reminders: the other half of it is «we wrote
         and nobody answered», and the portal is too slow to ask twice.
         """
+        self.correspondence = {}
+        now = time.monotonic()
+        if not self.tracker_open or now - self.asked > ISSUES_EVERY:
+            self.asked = now
+            self.tracker_open = open_issues()
+            log.info('tracker: %d open issues of ours', len(self.tracker_open))
         waiting = [c for c in cards
                    if c['status'] == 'waiting_factset' and uuid_of(c['issue'])]
-        self.correspondence = {}
         if not waiting:
             return 0
         self.correspondence = moves([uuid_of(c['issue']) for c in waiting])
@@ -359,20 +376,60 @@ class Sweep:
         all. The cell carries the status it was stamped for, so a disagreement
         is the whole signal — and it also migrates cards stamped by the old
         format, which held a bare ts and now reads as unknown.
+
+        Due Date rides along: it is the same clock told to a human, so when only
+        the date has drifted — a card carded before the rule, or a status the
+        rule now reads differently — the date is fixed on its own.
         """
         stamped = 0
         for card in cards:
-            if not card['status'] or card['since_status'] == card['status']:
+            # A closed card has no clock: nothing waits on it, and the ledger
+            # forgets it. Reopened by a human, it is stamped afresh — which is
+            # the honest answer, since nobody says when that happened.
+            if card['status'] not in OPEN_STATUSES:
+                continue
+            moved = card['since_status'] != card['status']
+            due = due_for(card['status'], card['since'] or time.time())
+            if not moved and card['due'] == (due[0] if due else ''):
                 continue
             if self.cfg.dry_run:
-                log.info('отметил бы время у %s: статус %s', card['id'], card['status'])
+                log.info('поправил бы %s у %s: статус %s',
+                         'часы' if moved else 'срок', card['id'], card['status'])
                 stamped += 1
                 continue
-            self.board.touch_status_since(card['id'], card['status'])
-            card['since_status'], card['since'] = card['status'], time.time()
-            log.info('card %s: status %s since now', card['id'], card['status'])
+            if moved:
+                self.board.touch_status_since(card['id'], card['status'])
+                card['since_status'], card['since'] = card['status'], time.time()
+                log.info('card %s: status %s since now', card['id'], card['status'])
+            else:
+                self.board.write_due(card['id'], due)
+                log.info('card %s: due date fixed to %s', card['id'], due or 'пусто')
+            card['due'] = due[0] if due else ''
             stamped += 1
         return stamped
+
+    def _assign(self, cards: list[dict], threads: dict) -> int:
+        """An open card with nobody on it gets whoever is on duty.
+
+        Only an empty one: a card handed to someone by name stays theirs. This
+        is what makes Slack's own «assigned to me» work, and the board say who
+        is carrying the call.
+        """
+        whom = self.duty.whom()
+        if not whom:
+            return 0
+        named = 0
+        for card in cards:
+            if card['status'] not in OPEN_STATUSES or card['assignee']:
+                continue
+            if self.cfg.dry_run:
+                log.info('назначил бы %s на %s', whom[0], card['id'])
+                named += 1
+                continue
+            self.board.assign(card['id'], whom[0])
+            log.info('card %s assigned to %s', card['id'], whom[0])
+            named += 1
+        return named
 
     def _overdue(self, cards: list[dict], threads: dict) -> int:
         now = time.time()
@@ -383,6 +440,60 @@ class Sweep:
             if card['since'] and now - card['since'] > STALE_AFTER:
                 stale += 1
         return stale
+
+    def _tracker_cards(self, cards: list[dict], threads: dict) -> int:
+        """Correspondence the board does not know about, and correspondence it
+        knows about that has moved on.
+
+        An issue where FactSet spoke last and nobody answered for a day is duty
+        work, and duty work belongs in the queue — even when it arrived through
+        the tracker instead of a Slack call. A card like that carries a Due Date
+        one day past the vendor's message, so Slack itself shows how long we
+        have been silent.
+
+        The same pass takes them off the board: answered means waiting on the
+        vendor again, and an issue gone from the open list means closed — but
+        only when no incident hangs on the card. A closed issue beside a live
+        incident is a mismatch worth a human's eye, and whether the incident is
+        closed the bot cannot yet ask. Absence is only trusted when the portal
+        actually answered: an empty dict is a failure, not an empty tracker.
+        """
+        import datetime as when  # noqa: PLC0415 — only the log line needs it
+        if not self.tracker_open:
+            return 0
+        carded = {uuid_of(c['issue']): c for c in cards if c['issue']}
+        touched = 0
+        for uuid, row in self.tracker_open.items():
+            if uuid in carded or not row['by_factset']:
+                continue
+            spoke = when.datetime.fromisoformat(row['last_on']).timestamp()
+            if time.time() - spoke < OURS_AFTER:
+                continue
+            if self.cfg.dry_run:
+                log.info('завёл бы карточку по обращению %s', uuid)
+                touched += 1
+                continue
+            item = self.board.add_issue(row['title'], f'{ISSUE_URL}{uuid}', spoke)
+            log.info('card %s opened from the tracker: %s, silent since %s',
+                     item, uuid, row['last_on'][:10])
+            touched += 1
+        for uuid, card in carded.items():
+            if card['status'] not in ('in_progress',) or thread_link(card['fields']):
+                continue
+            row = self.tracker_open.get(uuid)
+            if row and row['by_factset']:
+                continue
+            if not row and card['incident']:
+                continue
+            status = 'waiting_factset' if row else 'done'
+            if self.cfg.dry_run:
+                log.info('увёл бы карточку %s в %s', card['id'], status)
+                touched += 1
+                continue
+            self.board.set_status(card['id'], status)
+            log.info('card %s from the tracker moved to %s', card['id'], status)
+            touched += 1
+        return touched
 
     def _remind(self, cards: list[dict], threads: dict) -> int:
         return self.reminders.run(cards, self.correspondence)
