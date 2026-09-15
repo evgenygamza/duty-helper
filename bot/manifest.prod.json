@@ -1,0 +1,72 @@
+{
+  "display_information": {
+    "name": "duty-helper",
+    "description": "Помощник дежурного QA FactSet: ведёт очередь обращений на доске",
+    "background_color": "#1c2027"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "duty-helper",
+      "always_online": false
+    },
+    "app_home": {
+      "home_tab_enabled": false,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "slash_commands": [
+      {
+        "command": "/duty",
+        "description": "Кто дежурит, и кого поставить",
+        "usage_hint": "[@человек]",
+        "should_escape": true
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "channels:read",
+        "groups:read",
+        "chat:write",
+        "im:write",
+        "reactions:read",
+        "reactions:write",
+        "lists:read",
+        "lists:write",
+        "files:read",
+        "files:write",
+        "pins:read",
+        "pins:write",
+        "metadata.message:read",
+        "usergroups:read",
+        "commands"
+      ],
+      "user": [
+        "search:read",
+        "channels:history",
+        "groups:history",
+        "channels:read",
+        "groups:read",
+        "reactions:read",
+        "reactions:write",
+        "usergroups:write"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false,
+    "event_subscriptions": {
+      "bot_events": [
+        "message.channels",
+        "message.groups",
+        "message.im"
+      ]
+    }
+  }
+}
