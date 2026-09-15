@@ -29,7 +29,7 @@ import logging
 from functools import partial
 
 from ..fs_issue_tracker import letter
-from ..fs_issue_tracker.tracker import ISSUE_URL, uuid_of
+from ..fs_issue_tracker.tracker import issue_url, uuid_of
 from ..slack import comments as slack_comments
 from ..slack.board import card_text, plain
 from ..tv_jira import incident
@@ -148,7 +148,7 @@ class Commands:
                 return ('В карточке нет issue. Если это новое обращение к вендору — «заводи»')
             said = letter.send(uuid, standing['body'], self.for_real)
             self._now_waiting(card)
-            return f'{said}\n{ISSUE_URL}{uuid}'
+            return f'{said}\n{issue_url(uuid)}'
 
         if uuid:
             return ('У карточки уже есть issue. Ответить в него — «отправляй», '

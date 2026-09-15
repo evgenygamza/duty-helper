@@ -11,14 +11,28 @@ is what makes one retry safe: nothing was sent on the attempt that failed.
 """
 
 import logging
+import os
 import subprocess
 import threading
 from pathlib import Path
 
+# Where the skill sits for most installations: the Claude Code plugin directory.
+DEFAULT_SCRIPTS = '~/.claude/skills/factset-letters/scripts'
+
 log = logging.getLogger('duty')
 
-PORTAL = Path(__file__).parent / 'portal'
-LOGIN = PORTAL / 'login.py'
+# The portal scripts do not live here. Logging in under a person's account,
+# reading the code out of their mail and the selectors of the vendor's forms
+# belong to the `factset-letters` skill, and it owns them alone — two copies
+# had already drifted apart. The directory comes from `vendor.scripts`.
+
+
+def script(name: str) -> Path:
+    """A portal script by name, resolved at the moment it is needed: settings
+    are read after the modules are imported, so a value taken at import time
+    would always be the default."""
+    base = Path(os.environ.get('DUTY_PORTAL_SCRIPTS') or DEFAULT_SCRIPTS).expanduser()
+    return base / name
 
 # A login is a browser plus the wait for the mail with the code: otp.py alone
 # waits up to three minutes for it.
@@ -38,6 +52,10 @@ class SessionExpired(RuntimeError):
 
 
 def run(script: Path, args: list[str], timeout: int) -> str:
+    if not script.exists():
+        raise RuntimeError(
+            f'Нет скрипта портала: {script}. Их держит скилл factset-letters — '
+            f'укажи каталог в `vendor.scripts` конфига или в DUTY_PORTAL_SCRIPTS')
     done = subprocess.run(
         ['uv', 'run', '--script', str(script), *args],
         capture_output=True, text=True, timeout=timeout, cwd=script.parent,
@@ -56,7 +74,7 @@ def login() -> None:
         raise RuntimeError('вход в портал уже идёт, пропускаю')
     try:
         log.info('portal session died, logging in again')
-        run(LOGIN, [], LOGIN_TIMEOUT)
+        run(script('login.py'), [], LOGIN_TIMEOUT)
         log.info('portal session renewed')
     finally:
         _logging_in.release()

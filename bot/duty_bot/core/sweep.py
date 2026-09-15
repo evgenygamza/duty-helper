@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 
-from ..fs_issue_tracker.tracker import ISSUE_URL, moves, open_issues, uuid_of
+from ..fs_issue_tracker.tracker import issue_url, moves, open_issues, uuid_of
 from ..slack.board import OPEN_STATUSES, due_for, thread_link
 from ..slack.cards import open_card, refresh_card
 from ..slack.feedback import allowed, apply, theirs
@@ -473,7 +473,7 @@ class Sweep:
                 log.info('завёл бы карточку по обращению %s', uuid)
                 touched += 1
                 continue
-            item = self.board.add_issue(row['title'], f'{ISSUE_URL}{uuid}', spoke)
+            item = self.board.add_issue(row['title'], issue_url(uuid), spoke)
             log.info('card %s opened from the tracker: %s, silent since %s',
                      item, uuid, row['last_on'][:10])
             touched += 1

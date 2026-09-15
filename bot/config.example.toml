@@ -42,6 +42,10 @@ send = false
 [vendor]
 # Портал обращений поставщика данных. DUTY_PORTAL_URL
 portal = "https://issuetracker.example.com"
+# Каталог со скриптами портала: вход, чтение обращений, ответы. Их держит
+# скилл factset-letters, в этом репозитории их нет. Пусто — берётся
+# ~/.claude/skills/factset-letters/scripts. DUTY_PORTAL_SCRIPTS
+scripts = ""
 # Где лежат учётка портала и сохранённая сессия. Пусто — ~/.factset-letters.
 # FACTSET_LETTERS_HOME
 home = ""

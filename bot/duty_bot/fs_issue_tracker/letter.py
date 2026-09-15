@@ -12,12 +12,10 @@ import tempfile
 from pathlib import Path
 
 from ..core import draft
-from .session import PORTAL, ask
+from .session import ask, script
 
 log = logging.getLogger('duty')
 
-REPLY = PORTAL / 'reply.py'
-CREATE = PORTAL / 'create.py'
 PROMPT = (Path(__file__).parent / 'prompts' / 'letter_draft.md').read_text(encoding='utf-8')
 
 # The browser, the portal and the upload. Slow by nature, so it gets its own
@@ -78,7 +76,7 @@ def send(uuid: str, text: str, for_real: bool) -> str:
     if not for_real:
         log.info('letter for issue %s not sent, DUTY_SEND_OUTWARD is off: %s', uuid, path)
         return f'Заглушка, письмо не ушло. Что ушло бы: {path}'
-    said = ask(REPLY, [uuid, '--body-file', path], TIMEOUT)
+    said = ask(script('reply.py'), [uuid, '--body-file', path], TIMEOUT)
     log.info('letter sent to issue %s', uuid)
     return f'Отправил: {said.strip().splitlines()[-1]}'
 
@@ -97,7 +95,7 @@ def file_new(subject: str, body: str, for_real: bool,
     args = ['--subject', subject, '--body-file', path]
     if route(content_set):
         args += ['--content-set', route(content_set)]
-    said = ask(CREATE, args, TIMEOUT)
+    said = ask(script('create.py'), args, TIMEOUT)
     filed = next((line[len('Filed: '):].strip() for line in reversed(said.splitlines())
                   if line.startswith('Filed: ')), '')
     if not filed:

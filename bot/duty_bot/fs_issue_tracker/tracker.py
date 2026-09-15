@@ -24,15 +24,17 @@ import os
 import logging
 from urllib.parse import urlsplit
 
-from .session import PORTAL, ask
+from .session import ask, script
 
 log = logging.getLogger('duty')
 
-ISSUES = PORTAL / 'issues.py'
 
 # Где лежит обращение: из uuid собирается ссылка, по ссылке разбирается uuid.
-PORTAL = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
-ISSUE_URL = PORTAL + '/issue/'
+def issue_url(uuid: str = '') -> str:
+    """Human-facing address of an issue. Read late, like the scripts: the
+    portal address comes from the settings."""
+    base = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
+    return f'{base}/issue/{uuid}'
 
 # The portal and a detail call per fresh issue. Slow, but it runs once a pass
 # and only when something is actually waiting.
@@ -63,7 +65,7 @@ def open_issues() -> dict[str, dict]:
 
 
 def _ask_moves(args: list[str]) -> dict[str, dict]:
-    out = ask(ISSUES, ['moves', *args], TIMEOUT)
+    out = ask(script('issues.py'), ['moves', *args], TIMEOUT)
     tail = out.strip().splitlines()
     if not tail:
         raise RuntimeError('портал ничего не ответил')

@@ -73,6 +73,7 @@ class Config:
     search_filter: str
     commit_for_real: bool
     portal_url: str
+    portal_scripts: str
     letters_home: str
     jira: dict = field(default_factory=dict)
 
@@ -119,6 +120,9 @@ class Config:
             # because a flag was forgotten.
             commit_for_real=_yes(pick('outward', 'send', 'DUTY_SEND_OUTWARD')),
             portal_url=str(pick('vendor', 'portal', 'DUTY_PORTAL_URL', PORTAL)).rstrip('/'),
+            # The portal scripts themselves: they belong to the factset-letters
+            # skill, and the bot only calls them.
+            portal_scripts=str(pick('vendor', 'scripts', 'DUTY_PORTAL_SCRIPTS')),
             # Where the portal scripts keep credentials and the saved session.
             letters_home=str(pick('vendor', 'home', 'FACTSET_LETTERS_HOME')),
             # Ids of the Jira fields an incident is filed with. Internal to a
@@ -141,5 +145,7 @@ class Config:
         """Hand down what the portal scripts need: they run as separate
         processes and inherit the environment, not the config object."""
         os.environ['DUTY_PORTAL_URL'] = self.portal_url
+        if self.portal_scripts:
+            os.environ['DUTY_PORTAL_SCRIPTS'] = self.portal_scripts
         if self.letters_home:
             os.environ['FACTSET_LETTERS_HOME'] = self.letters_home
