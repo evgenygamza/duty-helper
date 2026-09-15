@@ -20,6 +20,7 @@ cookies have died.
 """
 
 import json
+import os
 import logging
 from urllib.parse import urlsplit
 
@@ -30,7 +31,8 @@ log = logging.getLogger('duty')
 ISSUES = PORTAL / 'issues.py'
 
 # Где лежит обращение: из uuid собирается ссылка, по ссылке разбирается uuid.
-ISSUE_URL = 'https://issuetracker.factset.com/issue/'
+PORTAL = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
+ISSUE_URL = PORTAL + '/issue/'
 
 # The portal and a detail call per fresh issue. Slow, but it runs once a pass
 # and only when something is actually waiting.

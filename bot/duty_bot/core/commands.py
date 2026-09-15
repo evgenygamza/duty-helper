@@ -29,7 +29,7 @@ import logging
 from functools import partial
 
 from ..fs_issue_tracker import letter
-from ..fs_issue_tracker.tracker import uuid_of
+from ..fs_issue_tracker.tracker import ISSUE_URL, uuid_of
 from ..slack import comments as slack_comments
 from ..slack.board import card_text, plain
 from ..tv_jira import incident
@@ -37,8 +37,6 @@ from . import draft, research
 from .locks import hold
 
 log = logging.getLogger('duty')
-
-ISSUE_URL = 'https://issuetracker.factset.com/issue/{uuid}'
 
 # What each kind is called and drafted with.
 KINDS = {
@@ -62,11 +60,12 @@ def kind_of(text: str) -> str:
 
 
 class Commands:
-    def __init__(self, comments, board, summarizer, commit_for_real: bool):
+    def __init__(self, comments, board, summarizer, cfg):
         self.comments = comments
         self.board = board
         self.summarizer = summarizer
-        self.for_real = commit_for_real
+        self.cfg = cfg
+        self.for_real = cfg.commit_for_real
 
     # --- the draft standing in a thread ---------------------------------
 
@@ -139,7 +138,8 @@ class Commands:
         if standing['kind'] == 'incident':
             if intent != 'file':
                 return 'Инцидент не отправляют, его заводят: «заводи»'
-            return incident.create(standing['subject'], standing['body'], self.for_real)
+            return incident.create(standing['subject'], standing['body'],
+                                   self.for_real, self.cfg.jira)
 
         card = self.comments.card(card_id)
         uuid = uuid_of(card['issue']) if card else ''
@@ -148,7 +148,7 @@ class Commands:
                 return ('В карточке нет issue. Если это новое обращение к вендору — «заводи»')
             said = letter.send(uuid, standing['body'], self.for_real)
             self._now_waiting(card)
-            return f'{said}\n{ISSUE_URL.format(uuid=uuid)}'
+            return f'{said}\n{ISSUE_URL}{uuid}'
 
         if uuid:
             return ('У карточки уже есть issue. Ответить в него — «отправляй», '
@@ -243,7 +243,8 @@ class Commands:
             self.comments.mark(ts, 'eyes', on=False)
 
 
-def register(app, comments, board, summarizer, commit_for_real: bool) -> None:
-    commands = Commands(comments, board, summarizer, commit_for_real)
-    log.info('письма и инциденты уходят: %s', 'да' if commit_for_real else 'нет, заглушка')
+def register(app, comments, board, summarizer, cfg) -> None:
+    commands = Commands(comments, board, summarizer, cfg)
+    log.info('письма и инциденты уходят: %s',
+             'да' if cfg.commit_for_real else 'нет, заглушка')
     slack_comments.register(app, comments, commands.handle)

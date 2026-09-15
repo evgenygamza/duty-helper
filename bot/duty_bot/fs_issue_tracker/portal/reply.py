@@ -21,13 +21,15 @@ IMPORTANT: the text of a letter is agreed with the user before it is sent.
 --dry-run fills the form and stops before Reply.
 """
 
+import os
 import argparse
 import sys
 from pathlib import Path
 
 from paths import STORAGE_STATE
 
-ISSUE_URL = 'https://issuetracker.factset.com/issue/{uuid}'
+PORTAL = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
+ISSUE_URL = PORTAL + '/issue/{uuid}'
 EDITOR_ID = 'uiTinymce0'
 # The Close Issue button lives on the same page: address this one by name only.
 SUBMIT_BUTTON = 'Reply'
@@ -95,7 +97,7 @@ def reply(uuid: str, html: str, attachments: list[Path], dry_run: bool, headed: 
         browser = pw.chromium.launch(headless=not headed)
         context = browser.new_context(storage_state=str(STORAGE_STATE))
         context.grant_permissions(
-            ['clipboard-read', 'clipboard-write'], origin='https://issuetracker.factset.com'
+            ['clipboard-read', 'clipboard-write'], origin=PORTAL
         )
         page = context.new_page()
 

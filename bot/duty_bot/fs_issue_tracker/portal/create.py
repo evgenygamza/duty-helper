@@ -31,7 +31,8 @@ from dotenv import load_dotenv
 from paths import STORAGE_STATE, ensure_env
 from reply import put_in_clipboard
 
-CREATE_URL = 'https://issuetracker.factset.com/create'
+PORTAL = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
+CREATE_URL = PORTAL + '/create'
 # The button is Send and Cancel sits next to it: address it by name only.
 SUBMIT_BUTTON = 'Send'
 # The page carries two forms: the normal one and a hidden mobile one. Without
@@ -251,7 +252,7 @@ def create(args, html: str, cc: list[str]) -> int:
         browser = pw.chromium.launch(headless=not args.headed)
         context = browser.new_context(storage_state=str(STORAGE_STATE))
         context.grant_permissions(
-            ['clipboard-read', 'clipboard-write'], origin='https://issuetracker.factset.com'
+            ['clipboard-read', 'clipboard-write'], origin=PORTAL
         )
         page = context.new_page()
 

@@ -61,7 +61,7 @@ def build(cfg: Config) -> App:
     # The comment listener borrows the sweep's choice of token: a card's thread
     # may well live in a channel the bot is not in.
     comments = Comments(app.client, board, app.client.auth_test()['user_id'], sweep.by)
-    register_commands(app, comments, board, summarizer, cfg.commit_for_real)
+    register_commands(app, comments, board, summarizer, cfg)
     register_duty(app, duty)
     sweep.every(cfg.sweep_seconds)
     return app

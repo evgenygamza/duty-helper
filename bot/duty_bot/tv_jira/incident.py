@@ -26,24 +26,21 @@ PROMPT = (Path(__file__).parent / 'prompts' / 'incident_draft.md').read_text(enc
 MARK = 'Черновик инцидента ITSM'
 COMMIT = 'заводи'
 
-# Fields the FINEX process asks for. They live in the draft as plain words and
-# are turned into Jira ids only at the moment of filing, so that the duty person
+# The project, the issue type and the ids of the custom fields come from the
+# config: they belong to a company, not to this code. In the draft they stay
+# plain words, and become ids only at the moment of filing — the duty person
 # reads a ticket and not a table of customfield numbers.
-FIELDS = {
-    'request_type': 'customfield_10010',
-    'environment': 'customfield_12884',
-    'detected_by': 'customfield_12890',
-    'team': 'customfield_13634',
-}
 
 
 def draft_message(summary: str, body: str, missing: str) -> str:
     return draft.message(MARK, summary, body, missing, COMMIT)
 
 
-def create(summary: str, body: str, for_real: bool) -> str:
+def create(summary: str, body: str, for_real: bool, jira: dict | None = None) -> str:
     """Files the incident. Returns what to tell the duty person."""
-    fields = {'project': 'ITSM', 'issuetype': 'Incident',
+    jira = jira or {}
+    fields = {'project': jira.get('project', ''),
+              'issuetype': jira.get('issue_type', 'Incident'),
               'summary': summary, 'description': body}
     if not for_real:
         with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False,

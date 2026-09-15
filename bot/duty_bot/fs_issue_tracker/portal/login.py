@@ -30,8 +30,9 @@ import sys
 from dotenv import load_dotenv
 from paths import HOME, STORAGE_STATE, ensure_env
 
-START_URL = 'https://issuetracker.factset.com/myissues/myopenissues'
-PORTAL_URL_GLOB = '**://issuetracker.factset.com/**'
+PORTAL = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
+START_URL = PORTAL + '/myissues/myopenissues'
+PORTAL_URL_GLOB = f'**://{PORTAL.split("//")[-1]}/**'
 
 
 def login(headed: bool = False, otp_source: str = 'imap'):

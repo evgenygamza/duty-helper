@@ -221,8 +221,8 @@ class Board:
 
     def add_item(self, summary: dict, link: str, label: str = 'тред',
                  read_up_to: str = '') -> str:
-        """The link carries the channel in its caption: «#qa-factset» says where
-        the call came from, and the click still lands in the thread."""
+        """The link carries the channel in its caption: the channel name says
+        where the call came from, and the click still lands in the thread."""
         when = dt.datetime.now().timestamp()
         fields = self._initial(summary)
         fields += [

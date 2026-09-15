@@ -21,6 +21,7 @@ full, while the company ones give up a title only — their detail answers 403. 
 from the company views are marked `~`.
 """
 
+import os
 import argparse
 import json
 import re
@@ -33,7 +34,8 @@ from html import unescape
 from paths import STORAGE_STATE
 from tls import ssl_context
 
-BASE = 'https://issuetracker.factset.com'
+PORTAL = os.environ.get('DUTY_PORTAL_URL', 'https://issuetracker.factset.com')
+BASE = PORTAL
 TLS = ssl_context()
 
 # UI and API names diverge: the My Closed Issues section calls myresolvedissues.

@@ -10,7 +10,7 @@ from duty_bot.core.config import Config
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-    cfg = Config.from_env()
+    cfg = Config.load()
     logging.getLogger('duty').info(
         'feed %s, listening for group %s', cfg.feed_channel, cfg.duty_group
     )
