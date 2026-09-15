@@ -35,6 +35,23 @@ START_URL = PORTAL + '/myissues/myopenissues'
 PORTAL_URL_GLOB = f'**://{PORTAL.split("//")[-1]}/**'
 
 
+def stuck(page) -> str:
+    """Why the login never reached the portal.
+
+    Whatever goes wrong on the auth host looks the same from here — a navigation
+    that never happens — and a bare playwright timeout sends the reader looking
+    for a broken selector. An expired password is the common case and says so in
+    plain words on the page, so read the page instead. The sweep shows this text
+    in the feed, so it is written for a human.
+    """
+    text = ' '.join((page.locator('body').inner_text() or '').split())
+    if 'password is expired' in text.lower() or 'reset your password' in text.lower():
+        return ('Пароль от портала истёк, FactSet просит его сменить. Письмо '
+                '«FactSet - Reset Password», ссылка в нём живёт недолго. После смены '
+                'положить новый пароль в FACTSET_PASSWORD.')
+    return f'Логин застрял на {page.url}\n{text[:400]}'
+
+
 def login(headed: bool = False, otp_source: str = 'imap'):
     from playwright.sync_api import TimeoutError as PWTimeout
     from playwright.sync_api import sync_playwright
@@ -90,7 +107,10 @@ def login(headed: bool = False, otp_source: str = 'imap'):
             except PWTimeout:
                 pass
 
-        page.wait_for_url(PORTAL_URL_GLOB, timeout=60_000)
+        try:
+            page.wait_for_url(PORTAL_URL_GLOB, timeout=60_000)
+        except PWTimeout:
+            raise SystemExit(stuck(page)) from None
         page.wait_for_load_state('networkidle')
 
         context.storage_state(path=str(STORAGE_STATE))
